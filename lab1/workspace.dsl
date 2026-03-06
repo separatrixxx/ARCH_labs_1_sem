@@ -1,10 +1,11 @@
 workspace {
+    !identifiers hierarchical
+    !impliedRelationships false
 
     model {
         client = person "Клиент" "Пользователь, осуществляющий поиск и заказ услуг"
         provider = person "Исполнитель" "Пользователь, публикующий и предоставляющий услуги"
 
-        paymentSystem = softwareSystem "Платёжная система" "Обработка платежей за услуги" "External System"
         emailService = softwareSystem "Email-сервис" "Отправка уведомлений по электронной почте" "External System"
 
         serviceOrderingSystem = softwareSystem "Платформа заказа услуг" "Поиск и заказ услуг клиентами, публикация услуг исполнителями" {
@@ -13,51 +14,51 @@ workspace {
             servicesCatalog = container "Сервис каталога услуг" "Создание, поиск и просмотр услуг" "C++, userver"
             orderService = container "Сервис заказов" "Создание заказов и управление статусами" "C++, userver"
             database = container "База данных" "Хранение пользователей, услуг и заказов" "PostgreSQL" "Database"
+
+            webApp -> userService "Регистрация и поиск пользователей" "HTTPS/REST, JSON"
+            webApp -> servicesCatalog "Просмотр и создание услуг" "HTTPS/REST, JSON"
+            webApp -> orderService "Оформление и просмотр заказов" "HTTPS/REST, JSON"
+            userService -> database "Чтение и запись данных пользователей" "SQL/TCP"
+            servicesCatalog -> database "Чтение и запись данных услуг" "SQL/TCP"
+            orderService -> database "Чтение и запись данных заказов" "SQL/TCP"
+            orderService -> emailService "Уведомление исполнителя о заказе и клиента об оплате" "SMTP"
+            servicesCatalog -> emailService "Уведомление клиентов о новых услугах" "SMTP"
         }
 
-        client -> serviceOrderingSystem "Регистрация, поиск услуг, оформление и оплата заказа"
+        client -> serviceOrderingSystem "Регистрация, поиск услуг, оформление заказа"
         provider -> serviceOrderingSystem "Регистрация, создание услуг"
-        serviceOrderingSystem -> paymentSystem "Обработка платежей" "HTTPS/REST"
         serviceOrderingSystem -> emailService "Отправка уведомлений" "SMTP"
-
-        client -> webApp "Работа с платформой" "HTTPS"
-        provider -> webApp "Управление услугами и заказами" "HTTPS"
-
-        webApp -> userService "Регистрация и поиск пользователей" "HTTPS/REST, JSON"
-        webApp -> servicesCatalog "Просмотр и создание услуг" "HTTPS/REST, JSON"
-        webApp -> orderService "Оформление и просмотр заказов" "HTTPS/REST, JSON"
-
-        userService -> database "Чтение и запись данных пользователей" "SQL/TCP"
-        servicesCatalog -> database "Чтение и запись данных услуг" "SQL/TCP"
-        orderService -> database "Чтение и запись данных заказов" "SQL/TCP"
-        orderService -> paymentSystem "Инициирование оплаты" "HTTPS/REST"
-        orderService -> emailService "Уведомление исполнителя о заказе и клиента об оплате" "SMTP"
-        servicesCatalog -> emailService "Уведомление клиентов о новых услугах" "SMTP"
+        client -> serviceOrderingSystem.webApp "Работа с платформой" "HTTPS"
+        provider -> serviceOrderingSystem.webApp "Управление услугами и заказами" "HTTPS"
     }
 
     views {
-        systemContext serviceOrderingSystem "SystemContext" {
+        systemContext serviceOrderingSystem "C1" {
             include *
             autoLayout
         }
 
-        container serviceOrderingSystem "Containers" {
+        container serviceOrderingSystem "C2" {
             include *
             autoLayout
         }
 
-        dynamic serviceOrderingSystem "PlaceOrder" "Оформление и оплата заказа клиентом" {
-            client -> webApp "Выбор услуги и оформление заказа"
-            webApp -> orderService "POST /orders?serviceId={id}"
-            orderService -> database "Сохранение заказа"
-            orderService -> paymentSystem "Оплата заказа"
-            paymentSystem -> orderService "Результат оплаты"
-            orderService -> emailService "Уведомление исполнителя о новом заказе"
-            orderService -> emailService "Уведомление клиента об успешной оплате"
-            orderService -> webApp "Результат оформления заказа"
-            webApp -> client "Отображение результата оформления заказа"
+        dynamic serviceOrderingSystem "PlaceOrder" {
+            description "Сценарий: оформление заказа клиентом"
+            client -> serviceOrderingSystem.webApp "Просмотр каталога услуг"
+            serviceOrderingSystem.webApp -> serviceOrderingSystem.servicesCatalog "Запрос списка услуг"
+            serviceOrderingSystem.servicesCatalog -> serviceOrderingSystem.database "Чтение каталога услуг"
+            client -> serviceOrderingSystem.webApp "Выбор услуги и оформление заказа"
+            serviceOrderingSystem.webApp -> serviceOrderingSystem.orderService "Оформление заказа"
+            serviceOrderingSystem.orderService -> serviceOrderingSystem.database "Сохранение заказа"
+            serviceOrderingSystem.orderService -> emailService "Уведомление исполнителя о новом заказе"
+            serviceOrderingSystem.orderService -> emailService "Уведомление клиента об успешном заказе"
+            serviceOrderingSystem.orderService -> serviceOrderingSystem.webApp "Результат оформления заказа"
+            serviceOrderingSystem.webApp -> client "Отображение результата оформления заказа"
             autoLayout
         }
+
+        theme default
 
         styles {
             element "Person" {
