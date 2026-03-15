@@ -35,6 +35,9 @@ components_manager:
 
         jwt-auth-middleware: {}
 
+        dns-client:
+            fs-task-processor: fs-task-processor
+
         http-client:
             fs-task-processor: fs-task-processor
 

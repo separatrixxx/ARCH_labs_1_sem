@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 
 
@@ -24,10 +26,11 @@ async def get_token(client, user_login="testuser"):
 
 @pytest.mark.asyncio
 async def test_register_success(service_client):
-    resp = await register(service_client, "user_reg_ok")
+    unique_login = f"user_reg_{uuid.uuid4().hex[:8]}"
+    resp = await register(service_client, unique_login)
     assert resp.status == 201
     body = resp.json()
-    assert body["login"] == "user_reg_ok"
+    assert body["login"] == unique_login
     assert "id" in body
     assert "password_hash" not in body
 

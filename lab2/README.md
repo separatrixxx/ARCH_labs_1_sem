@@ -63,7 +63,7 @@ docker compose up --build
 
 Swagger UI: http://localhost:8080/swagger
 
-### Локально
+### Локально (без nginx)
 
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_UPDATES_DISCONNECTED=ON
@@ -72,6 +72,12 @@ cmake --build build --target user_service catalog_service order_service
 ./build/catalog_service --config configs/catalog-service/static_config.yaml &
 ./build/order_service --config configs/order-service/static_config.yaml &
 ```
+
+Сервисы доступны напрямую по портам (nginx не нужен):
+- Swagger UI: http://localhost:8081/swagger
+- user-service: http://localhost:8081
+- catalog-service: http://localhost:8082
+- order-service: http://localhost:8083
 
 ## Тесты
 

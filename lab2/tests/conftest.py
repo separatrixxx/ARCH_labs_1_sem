@@ -1,7 +1,27 @@
-import pytest
-import aiohttp
+import os
+import re
 
-BASE_URL = "http://localhost:8080"
+import aiohttp
+import pytest
+
+_USE_GATEWAY = os.getenv("USE_GATEWAY", "0") == "1"
+
+_GATEWAY_URL = "http://localhost:8080"
+_ROUTES = [
+    (re.compile(r"^/api/v1/(auth|users|notifications)"), "http://localhost:8081"),
+    (re.compile(r"^/api/v1/services"),                   "http://localhost:8082"),
+    (re.compile(r"^/api/v1/orders"),                     "http://localhost:8083"),
+    (re.compile(r"^/(swagger|openapi\.yaml)"),           "http://localhost:8081"),
+]
+
+
+def _resolve(path: str) -> str:
+    if _USE_GATEWAY:
+        return _GATEWAY_URL + path
+    for pattern, base in _ROUTES:
+        if pattern.match(path):
+            return base + path
+    return "http://localhost:8081" + path
 
 
 class Response:
@@ -19,7 +39,7 @@ class ServiceClient:
 
     async def post(self, path, json=None, headers=None):
         async with self._session.post(
-            BASE_URL + path, json=json, headers=headers
+            _resolve(path), json=json, headers=headers
         ) as r:
             try:
                 body = await r.json(content_type=None)
@@ -29,7 +49,7 @@ class ServiceClient:
 
     async def get(self, path, params=None, headers=None):
         async with self._session.get(
-            BASE_URL + path, params=params, headers=headers
+            _resolve(path), params=params, headers=headers
         ) as r:
             try:
                 body = await r.json(content_type=None)

@@ -35,6 +35,9 @@ components_manager:
 
         jwt-auth-middleware: {}
 
+        dns-client:
+            fs-task-processor: fs-task-processor
+
         http-client:
             fs-task-processor: fs-task-processor
 
@@ -56,4 +59,4 @@ components_manager:
             path: /api/v1/orders/{order_id}/services
             method: POST
             task_processor: main-task-processor
-            catalog_url: http://catalog-service:8082
+            catalog_url: http://localhost:8082
