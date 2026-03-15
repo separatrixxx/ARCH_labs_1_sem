@@ -61,7 +61,7 @@ podman compose up --build
 docker compose up --build
 ```
 
-Swagger UI: http://localhost:8080/swagger
+Swagger UI: http://localhost:8081/swagger
 
 ### Локально (без nginx)
 
