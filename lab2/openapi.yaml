@@ -5,8 +5,10 @@ info:
   version: "1.0.0"
 
 servers:
+  - url: http://localhost:8081
+    description: Local (без nginx, напрямую)
   - url: http://localhost:8080
-    description: Local development server
+    description: Docker (через nginx)
 
 components:
   securitySchemes:
@@ -288,6 +290,48 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "404":
           description: Заказ не найден
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/notifications/email:
+    post:
+      summary: Отправить email через Unisender
+      tags: [Notifications]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to, subject, message]
+              properties:
+                to:      { type: string, example: "user@example.com" }
+                subject: { type: string, example: "Ваш заказ принят" }
+                message: { type: string, example: "Здравствуйте! Ваш заказ #42 принят в работу." }
+      responses:
+        "200":
+          description: Письмо успешно отправлено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result: { type: string, example: "sent" }
+        "400":
+          description: Не переданы обязательные поля
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: Ошибка при обращении к Unisender
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
