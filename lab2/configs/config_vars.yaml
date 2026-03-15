@@ -1,0 +1,4 @@
+worker_threads: 4
+server_port: 8080
+logger_level: info
+config_vars_path: ''

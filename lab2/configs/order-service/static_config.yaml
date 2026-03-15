@@ -1,0 +1,59 @@
+components_manager:
+    task_processors:
+        main-task-processor:
+            worker_threads: 2
+            thread_name: main-worker
+        fs-task-processor:
+            worker_threads: 1
+            thread_name: fs-worker
+    default_task_processor: main-task-processor
+
+    components:
+        server:
+            listener:
+                port: 8083
+                task_processor: main-task-processor
+
+        logging:
+            fs-task-processor: fs-task-processor
+            loggers:
+                default:
+                    file_path: '@stderr'
+                    level: info
+                    overflow_behavior: discard
+
+        tracer:
+            service-name: order-service
+
+        statistics-storage: {}
+
+        dynamic-config:
+            fs-cache-path: ''
+            fs-task-processor: fs-task-processor
+
+        order-storage: {}
+
+        jwt-auth-middleware: {}
+
+        http-client:
+            fs-task-processor: fs-task-processor
+
+        default-server-middleware-pipeline-builder:
+            append:
+              - jwt-auth-middleware
+
+        handler-orders:
+            path: /api/v1/orders
+            method: GET,POST
+            task_processor: main-task-processor
+
+        handler-order-by-id:
+            path: /api/v1/orders/{id}
+            method: GET
+            task_processor: main-task-processor
+
+        handler-order-services:
+            path: /api/v1/orders/{order_id}/services
+            method: POST
+            task_processor: main-task-processor
+            catalog_url: http://catalog-service:8082

@@ -1,0 +1,340 @@
+openapi: "3.0.3"
+info:
+  title: Profi Service API
+  description: REST API для платформы заказа услуг (аналог profi.ru)
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:        { type: string, example: "1" }
+        login:     { type: string, example: "ivan.petrov" }
+        first_name: { type: string, example: "Ivan" }
+        last_name:  { type: string, example: "Petrov" }
+
+    Service:
+      type: object
+      properties:
+        id:          { type: string, example: "5" }
+        title:       { type: string, example: "House cleaning" }
+        description: { type: string, example: "Deep apartment cleaning" }
+        price:       { type: number, format: double, example: 2500.0 }
+        provider_id: { type: string, example: "2" }
+
+    Order:
+      type: object
+      properties:
+        id:         { type: string, example: "10" }
+        client_id:  { type: string, example: "3" }
+        status:     { type: string, example: "pending" }
+        service_ids:
+          type: array
+          items: { type: string }
+          example: ["5", "7"]
+
+    Error:
+      type: object
+      properties:
+        error: { type: string, example: "User with this login already exists" }
+
+paths:
+  /api/v1/auth/register:
+    post:
+      summary: Регистрация нового пользователя
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [login, first_name, last_name, password]
+              properties:
+                login:      { type: string, example: "ivan.petrov" }
+                first_name: { type: string, example: "Ivan" }
+                last_name:  { type: string, example: "Petrov" }
+                password:   { type: string, example: "secret123" }
+      responses:
+        "201":
+          description: Пользователь создан
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400":
+          description: Не переданы обязательные поля
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Пользователь с таким логином уже существует
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/auth/login:
+    post:
+      summary: Аутентификация пользователя (получение JWT)
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [login, password]
+              properties:
+                login:    { type: string, example: "ivan.petrov" }
+                password: { type: string, example: "secret123" }
+      responses:
+        "200":
+          description: JWT токен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string, example: "eyJhbGciOiJIUzI1NiJ9..." }
+        "400":
+          description: Не переданы обязательные поля
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/users:
+    get:
+      summary: Поиск пользователей по логину или маске имени/фамилии
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: login
+          in: query
+          description: Точный логин пользователя
+          schema: { type: string }
+        - name: first_name
+          in: query
+          description: Подстрока имени
+          schema: { type: string }
+        - name: last_name
+          in: query
+          description: Подстрока фамилии
+          schema: { type: string }
+      responses:
+        "200":
+          description: Список найденных пользователей
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/User" }
+        "400":
+          description: Не указан ни один параметр поиска
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/services:
+    get:
+      summary: Получить список всех услуг
+      tags: [Services]
+      responses:
+        "200":
+          description: Список услуг
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Service" }
+
+    post:
+      summary: Создать новую услугу
+      tags: [Services]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:       { type: string, example: "House cleaning" }
+                description: { type: string, example: "Deep clean" }
+                price:       { type: number, example: 2500.0 }
+      responses:
+        "201":
+          description: Услуга создана
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Service" }
+        "400":
+          description: Не передано поле title
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/services/{id}:
+    get:
+      summary: Получить услугу по ID
+      tags: [Services]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Услуга найдена
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Service" }
+        "404":
+          description: Услуга не найдена
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/orders:
+    get:
+      summary: Получить заказы текущего пользователя
+      tags: [Orders]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Список заказов
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Order" }
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+    post:
+      summary: Создать новый заказ
+      tags: [Orders]
+      security:
+        - BearerAuth: []
+      responses:
+        "201":
+          description: Заказ создан
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/orders/{id}:
+    get:
+      summary: Получить заказ по ID
+      tags: [Orders]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Заказ найден
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Заказ принадлежит другому пользователю
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Заказ не найден
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/orders/{order_id}/services:
+    post:
+      summary: Добавить услугу в заказ
+      tags: [Orders]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service_id]
+              properties:
+                service_id: { type: string, example: "5" }
+      responses:
+        "200":
+          description: Услуга добавлена, возвращается обновлённый заказ
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "400":
+          description: Не передан service_id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Заказ принадлежит другому пользователю
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Заказ или услуга не найдены
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
