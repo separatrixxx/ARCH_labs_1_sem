@@ -64,4 +64,4 @@ private:
     std::string catalog_url_;
 };
 
-}  // namespace profi::handlers
+}

@@ -36,4 +36,4 @@ private:
     std::string spec_;
 };
 
-}  // namespace profi::handlers
+}

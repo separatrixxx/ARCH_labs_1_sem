@@ -1,6 +1,5 @@
 import os
 import re
-
 import aiohttp
 import pytest
 
@@ -18,9 +17,11 @@ _ROUTES = [
 def _resolve(path: str) -> str:
     if _USE_GATEWAY:
         return _GATEWAY_URL + path
+    
     for pattern, base in _ROUTES:
         if pattern.match(path):
             return base + path
+        
     return "http://localhost:8081" + path
 
 

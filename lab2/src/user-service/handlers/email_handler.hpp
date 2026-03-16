@@ -32,4 +32,4 @@ private:
     std::string list_id_;
 };
 
-}  // namespace profi::handlers
+}

@@ -55,4 +55,4 @@ struct AddServiceRequest {
     std::string service_id;
 };
 
-}  // namespace profi::dto
+}

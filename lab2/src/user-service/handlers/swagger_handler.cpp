@@ -34,7 +34,7 @@ window.onload = function() {
 </html>
 )html";
 
-}  // namespace
+}
 
 std::string SwaggerUiHandler::HandleRequestThrow(
     const userver::server::http::HttpRequest& request,
@@ -63,4 +63,4 @@ std::string OpenApiHandler::HandleRequestThrow(
     return spec_;
 }
 
-}  // namespace profi::handlers
+}

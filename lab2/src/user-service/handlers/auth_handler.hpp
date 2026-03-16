@@ -39,4 +39,4 @@ private:
     UserStorage& storage_;
 };
 
-}  // namespace profi::handlers
+}

@@ -80,4 +80,4 @@ std::string EmailHandler::HandleRequestThrow(
     return resp->body();
 }
 
-}  // namespace profi::handlers
+}

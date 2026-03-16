@@ -23,7 +23,9 @@ fj::Value ToJson(const dto::OrderResponse& o) {
     b["client_id"] = o.client_id;
     b["status"] = o.status;
     fj::ValueBuilder sids(fj::Type::kArray);
-    for (const auto& sid : o.service_ids) sids.PushBack(sid);
+    for (const auto& sid : o.service_ids) {
+        sids.PushBack(sid);
+    }
     b["service_ids"] = sids.ExtractValue();
     return b.ExtractValue();
 }
@@ -32,7 +34,7 @@ dto::OrderResponse ToDto(const Order& o) {
     return {o.id, o.client_id, o.status, o.service_ids};
 }
 
-}  // namespace
+}
 
 OrdersHandler::OrdersHandler(
     const userver::components::ComponentConfig& config,
@@ -152,4 +154,4 @@ std::string OrderServicesHandler::HandleRequestThrow(
     return fj::ToString(ToJson(ToDto(*updated)));
 }
 
-}  // namespace profi::handlers
+}

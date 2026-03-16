@@ -43,4 +43,4 @@ private:
     std::unordered_map<std::string, Order> orders_;
 };
 
-}  // namespace profi
+}

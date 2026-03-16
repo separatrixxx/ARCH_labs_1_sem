@@ -1,28 +1,38 @@
 #include <userver/utest/utest.hpp>
 
 #include "storage.hpp"
+#include "../catalog-service/storage.hpp"
+#include "../order-service/storage.hpp"
 #include "jwt.hpp"
 
 namespace {
 
 struct TestStorage {
-    std::optional<profi::User> FindUserByLogin(const std::string& login) const {
-        auto it = login_to_id_.find(login);
-        if (it == login_to_id_.end()) return std::nullopt;
-        auto uit = users_.find(it->second);
-        if (uit == users_.end()) return std::nullopt;
-        return uit->second;
-    }
-
     profi::User CreateUser(const std::string& login,
                             const std::string& first_name,
                             const std::string& last_name,
                             const std::string& pw_hash) {
         auto id = std::to_string(++counter_);
-        profi::User u{id, login, first_name, last_name, pw_hash};
+        profi::User u{id, login, /*email=*/"", first_name, last_name, pw_hash};
         users_[id] = u;
         login_to_id_[login] = id;
         return u;
+    }
+
+    std::optional<profi::User> FindUserByLogin(const std::string& login) const {
+        auto it = login_to_id_.find(login);
+
+        if (it == login_to_id_.end()) {
+            return std::nullopt;
+        }
+
+        auto uit = users_.find(it->second);
+
+        if (uit == users_.end()) {
+            return std::nullopt;
+        }
+        
+        return uit->second;
     }
 
     std::vector<profi::User> FindByNameMask(const std::string& fn,
@@ -30,9 +40,15 @@ struct TestStorage {
         std::vector<profi::User> res;
         for (const auto& [id, u] : users_) {
             bool ok = true;
-            if (!fn.empty()) ok = ok && u.first_name.find(fn) != std::string::npos;
-            if (!ln.empty()) ok = ok && u.last_name.find(ln) != std::string::npos;
-            if (ok) res.push_back(u);
+            if (!fn.empty()) {
+                ok = ok && u.first_name.find(fn) != std::string::npos;
+            }
+            if (!ln.empty()) {
+                ok = ok && u.last_name.find(ln) != std::string::npos;
+            }
+            if (ok) {
+                res.push_back(u);
+            }
         }
         return res;
     }
@@ -56,7 +72,9 @@ struct TestStorage {
     std::optional<profi::Order> AddServiceToOrder(const std::string& order_id,
                                                     const std::string& service_id) {
         auto it = orders_.find(order_id);
-        if (it == orders_.end()) return std::nullopt;
+        if (it == orders_.end()) {
+            return std::nullopt;
+        }
         it->second.service_ids.push_back(service_id);
         return it->second;
     }

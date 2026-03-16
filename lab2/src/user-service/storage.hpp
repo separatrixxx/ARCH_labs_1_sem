@@ -33,6 +33,7 @@ public:
 
     std::optional<User> FindByLogin(const std::string& login) const;
     std::optional<User> FindById(const std::string& id) const;
+    std::vector<User> FindAll() const;
     std::vector<User> FindByNameMask(const std::string& first_name,
                                      const std::string& last_name) const;
     User Create(const std::string& login, const std::string& email,
@@ -48,4 +49,4 @@ private:
     std::unordered_map<std::string, std::string> login_to_id_;
 };
 
-}  // namespace profi
+}

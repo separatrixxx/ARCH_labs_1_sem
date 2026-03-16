@@ -28,7 +28,7 @@ dto::UserResponse ToDto(const User& u) {
     return {u.id, u.login, u.email, u.first_name, u.last_name};
 }
 
-}  // namespace
+}
 
 UsersHandler::UsersHandler(
     const userver::components::ComponentConfig& config,
@@ -49,19 +49,21 @@ std::string UsersHandler::HandleRequestThrow(
 
     if (!login.empty()) {
         const auto user = storage_.FindByLogin(login);
-        if (user) result.PushBack(ToJson(ToDto(*user)));
+        if (user) {
+            result.PushBack(ToJson(ToDto(*user)));
+        }
     } else if (!first_name.empty() || !last_name.empty()) {
         for (const auto& u : storage_.FindByNameMask(first_name, last_name)) {
             result.PushBack(ToJson(ToDto(u)));
         }
     } else {
-        throw hs::ExceptionWithCode<hs::HandlerErrorCode::kClientError>(
-            hs::ExternalBody{
-                R"({"error":"Provide 'login' or 'first_name'/'last_name' query params"})"});
+        for (const auto& u : storage_.FindAll()) {
+            result.PushBack(ToJson(ToDto(u)));
+        }
     }
 
     request.GetHttpResponse().SetContentType("application/json");
     return fj::ToString(result.ExtractValue());
 }
 
-}  // namespace profi::handlers
+}

@@ -9,7 +9,7 @@
 
 namespace profi {
 
-static const std::string kJwtSecret = "profi-secret-key-change-in-prod";
+inline const std::string kJwtSecret = "profi-secret-key-change-in-prod";
 static constexpr std::string_view kJwtClaimsKey = "jwt_claims";
 
 class JwtAuthMiddleware final
@@ -50,4 +50,4 @@ inline const jwt::Claims& RequireAuth(
     return *claims;
 }
 
-}  // namespace profi
+}

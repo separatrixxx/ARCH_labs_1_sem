@@ -39,4 +39,4 @@ private:
     CatalogStorage& storage_;
 };
 
-}  // namespace profi::handlers
+}

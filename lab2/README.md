@@ -56,28 +56,28 @@ nginx:8080  ──┬──▶  user-service:8081    /api/v1/auth, /api/v1/users
 ### Docker
 
 ```bash
-podman compose up --build
-# или
 docker compose up --build
+# или
+podman compose up --build
 ```
 
 Swagger UI: http://localhost:8081/swagger
 
-### Локально (без nginx)
+### Локально
 
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_UPDATES_DISCONNECTED=ON
+bash apply_patches.sh
 cmake --build build --target user_service catalog_service order_service
-./build/user_service --config configs/user-service/static_config.yaml &
-./build/catalog_service --config configs/catalog-service/static_config.yaml &
-./build/order_service --config configs/order-service/static_config.yaml &
+bash start.sh
 ```
 
-Сервисы доступны напрямую по портам (nginx не нужен):
-- Swagger UI: http://localhost:8081/swagger
-- user-service: http://localhost:8081
-- catalog-service: http://localhost:8082
-- order-service: http://localhost:8083
+**Важно:** `apply_patches.sh` нужно запускать после каждого вызова `cmake -B build ...`, так как cmake пересоздаёт `build/_deps/` и стирает патчи
+
+- **Swagger UI: http://localhost:8080/swagger**
+- user-service напрямую: http://localhost:8081
+- catalog-service напрямую: http://localhost:8082
+- order-service напрямую: http://localhost:8083
 
 ## Тесты
 

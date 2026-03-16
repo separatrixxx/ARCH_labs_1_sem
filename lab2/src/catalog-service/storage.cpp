@@ -26,8 +26,11 @@ std::vector<Service> CatalogStorage::GetAll() const {
 std::optional<Service> CatalogStorage::FindById(const std::string& id) const {
     std::shared_lock lock(mutex_);
     auto it = services_.find(id);
-    if (it == services_.end()) return std::nullopt;
+    if (it == services_.end()) {
+        return std::nullopt;
+    }
+
     return it->second;
 }
 
-}  // namespace profi
+}

@@ -40,7 +40,7 @@ dto::UserResponse ToDto(const User& u) {
     return {u.id, u.login, u.email, u.first_name, u.last_name};
 }
 
-}  // namespace
+}
 
 RegisterHandler::RegisterHandler(
     const userver::components::ComponentConfig& config,
@@ -64,6 +64,11 @@ std::string RegisterHandler::HandleRequestThrow(
         req.first_name.empty() || req.last_name.empty()) {
         throw hs::ExceptionWithCode<hs::HandlerErrorCode::kClientError>(
             hs::ExternalBody{R"({"error":"login, first_name, last_name, password are required"})"});
+    }
+
+    if (req.password.size() < 6) {
+        throw hs::ExceptionWithCode<hs::HandlerErrorCode::kClientError>(
+            hs::ExternalBody{R"({"error":"password must be at least 6 characters"})"});
     }
 
     if (storage_.FindByLogin(req.login)) {
@@ -111,4 +116,4 @@ std::string LoginHandler::HandleRequestThrow(
     return fj::ToString(resp.ExtractValue());
 }
 
-}  // namespace profi::handlers
+}

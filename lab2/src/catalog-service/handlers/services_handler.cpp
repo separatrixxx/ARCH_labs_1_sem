@@ -29,7 +29,7 @@ dto::ServiceResponse ToDto(const Service& s) {
     return {s.id, s.title, s.description, s.price, s.provider_id};
 }
 
-}  // namespace
+}
 
 ServicesHandler::ServicesHandler(
     const userver::components::ComponentConfig& config,
@@ -90,4 +90,4 @@ std::string ServiceByIdHandler::HandleRequestThrow(
     return fj::ToString(ToJson(ToDto(*svc)));
 }
 
-}  // namespace profi::handlers
+}

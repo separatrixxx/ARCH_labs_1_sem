@@ -5,10 +5,10 @@ info:
   version: "1.0.0"
 
 servers:
-  - url: http://localhost:8081
-    description: Local (без nginx, напрямую)
   - url: http://localhost:8080
-    description: Docker (через nginx)
+    description: Local / Docker (через nginx)
+  - url: http://localhost:8081
+    description: user-service напрямую
 
 components:
   securitySchemes:
@@ -22,9 +22,9 @@ components:
       type: object
       properties:
         id:        { type: string, example: "1" }
-        login:     { type: string, example: "ivan.petrov" }
-        first_name: { type: string, example: "Ivan" }
-        last_name:  { type: string, example: "Petrov" }
+        login:     { type: string, example: "separatrix" }
+        first_name: { type: string, example: "Nikita" }
+        last_name:  { type: string, example: "Lokhmatov" }
 
     Service:
       type: object
@@ -64,10 +64,11 @@ paths:
               type: object
               required: [login, first_name, last_name, password]
               properties:
-                login:      { type: string, example: "ivan.petrov" }
-                first_name: { type: string, example: "Ivan" }
-                last_name:  { type: string, example: "Petrov" }
-                password:   { type: string, example: "secret123" }
+                login:      { type: string, example: "separatrix" }
+                email:      { type: string, example: "test@gmail.com" }
+                first_name: { type: string, example: "Nikita" }
+                last_name:  { type: string, example: "Lokhmatov" }
+                password:   { type: string, minLength: 6, example: "secret123" }
       responses:
         "201":
           description: Пользователь создан
@@ -97,7 +98,7 @@ paths:
               type: object
               required: [login, password]
               properties:
-                login:    { type: string, example: "ivan.petrov" }
+                login:    { type: string, example: "separatrix" }
                 password: { type: string, example: "secret123" }
       responses:
         "200":
@@ -121,7 +122,8 @@ paths:
 
   /api/v1/users:
     get:
-      summary: Поиск пользователей по логину или маске имени/фамилии
+      summary: Получить пользователей (всех или по фильтру)
+      description: Без параметров возвращает всех пользователей. С параметрами — фильтрует по логину или маске имени/фамилии.
       tags: [Users]
       security:
         - BearerAuth: []
@@ -132,25 +134,20 @@ paths:
           schema: { type: string }
         - name: first_name
           in: query
-          description: Подстрока имени
+          description: Подстрока имени (без учёта регистра)
           schema: { type: string }
         - name: last_name
           in: query
-          description: Подстрока фамилии
+          description: Подстрока фамилии (без учёта регистра)
           schema: { type: string }
       responses:
         "200":
-          description: Список найденных пользователей
+          description: Список пользователей
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/User" }
-        "400":
-          description: Не указан ни один параметр поиска
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: Не авторизован
           content:

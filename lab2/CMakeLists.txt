@@ -63,8 +63,11 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/tests/storage_test.cpp")
     add_executable(profi_services_unittest
         src/tests/storage_test.cpp
         src/user-service/storage.cpp
+        src/catalog-service/storage.cpp
+        src/order-service/storage.cpp
     )
     target_link_libraries(profi_services_unittest PRIVATE profi-shared userver::utest)
-    target_include_directories(profi_services_unittest PRIVATE src/user-service src/shared)
+    target_include_directories(profi_services_unittest PRIVATE
+        src/user-service src/catalog-service src/order-service src/shared)
     add_google_tests(profi_services_unittest)
 endif()

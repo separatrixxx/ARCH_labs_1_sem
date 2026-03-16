@@ -15,4 +15,4 @@ std::string Create(const std::string& user_id, const std::string& login,
 
 Claims Validate(const std::string& token, const std::string& secret);
 
-}  // namespace profi::jwt
+}
