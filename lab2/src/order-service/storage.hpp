@@ -1,16 +1,22 @@
 #pragma once
 
-#include <atomic>
-#include <mutex>
 #include <optional>
-#include <shared_mutex>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include <userver/components/component_base.hpp>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
+
+#ifdef USE_POSTGRESQL
+#include <userver/storages/postgres/cluster.hpp>
+#include <userver/storages/postgres/component.hpp>
+#else
+#include <atomic>
+#include <mutex>
+#include <shared_mutex>
+#include <unordered_map>
+#endif
 
 namespace profi {
 
@@ -26,8 +32,7 @@ public:
     static constexpr std::string_view kName = "order-storage";
 
     OrderStorage(const userver::components::ComponentConfig& config,
-                 const userver::components::ComponentContext& context)
-        : ComponentBase(config, context) {}
+                 const userver::components::ComponentContext& context);
 
     Order Create(const std::string& client_id);
     std::optional<Order> FindById(const std::string& id) const;
@@ -36,11 +41,17 @@ public:
     std::vector<Order> FindByClientId(const std::string& client_id) const;
 
 private:
+#ifdef USE_POSTGRESQL
+    Order FetchOrder(const std::string& id) const;
+
+    userver::storages::postgres::ClusterPtr pg_;
+#else
     std::string NextId() { return std::to_string(++counter_); }
 
     mutable std::shared_mutex mutex_;
     std::atomic<int> counter_{0};
     std::unordered_map<std::string, Order> orders_;
+#endif
 };
 
 }

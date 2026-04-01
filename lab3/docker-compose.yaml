@@ -1,0 +1,69 @@
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    environment:
+      POSTGRES_DB:       profidb
+      POSTGRES_USER:     profi
+      POSTGRES_PASSWORD: profi
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U profi -d profidb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  user-service:
+    image: profi-services-pg:latest
+    build:
+      context: ..
+      dockerfile: lab3/Dockerfile
+    command: ["./build/user_service", "--config", "configs/user-service/static_config.yaml", "--config_vars", "configs/config_vars.yaml"]
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  catalog-service:
+    image: profi-services-pg:latest
+    command: ["./build/catalog_service", "--config", "configs/catalog-service/static_config.yaml", "--config_vars", "configs/config_vars.yaml"]
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  order-service:
+    image: profi-services-pg:latest
+    command: ["./build/order_service", "--config", "configs/order-service/static_config.yaml", "--config_vars", "configs/config_vars.yaml"]
+    ports:
+      - "8083:8083"
+    depends_on:
+      catalog-service:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile.nginx
+    ports:
+      - "8080:8080"
+    depends_on:
+      - user-service
+      - catalog-service
+      - order-service
+    restart: on-failure
+
+volumes:
+  postgres_data:

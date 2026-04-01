@@ -3,6 +3,11 @@
 #include <userver/components/minimal_server_component_list.hpp>
 #include <userver/utils/daemon_run.hpp>
 
+#ifdef USE_POSTGRESQL
+#include <userver/storages/postgres/component.hpp>
+#include <userver/testsuite/testsuite_support.hpp>
+#endif
+
 #include "storage.hpp"
 #include "handlers/auth_handler.hpp"
 #include "handlers/users_handler.hpp"
@@ -13,6 +18,10 @@
 int main(int argc, char* argv[]) {
     auto component_list =
         userver::components::MinimalServerComponentList()
+#ifdef USE_POSTGRESQL
+            .Append<userver::components::TestsuiteSupport>()
+            .Append<userver::components::Postgres>("postgres-db")
+#endif
             .Append<profi::UserStorage>()
             .Append<profi::JwtAuthMiddlewareFactory>()
             .Append<userver::clients::dns::Component>()

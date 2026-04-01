@@ -4,10 +4,16 @@ project(profi_services CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+option(USE_POSTGRESQL "Use PostgreSQL storage backend instead of in-memory" OFF)
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(DownloadUserver)
 
-find_package(userver COMPONENTS core QUIET)
+if(USE_POSTGRESQL)
+  find_package(userver COMPONENTS core postgresql QUIET)
+else()
+  find_package(userver COMPONENTS core QUIET)
+endif()
 if(NOT userver_FOUND)
   download_userver(TRY_DIR third_party/userver GIT_TAG 1e560caf6787b61b389032b7bec68f2d404f80b5)
 endif()
@@ -58,8 +64,15 @@ target_include_directories(order_service PRIVATE
     src/shared
 )
 
+if(USE_POSTGRESQL)
+  foreach(svc user_service catalog_service order_service)
+    target_link_libraries(${svc} PRIVATE userver::postgresql)
+    target_compile_definitions(${svc} PRIVATE USE_POSTGRESQL)
+  endforeach()
+endif()
+
 # ── Unit tests (user-service storage) ────────────────────────────────────────
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/tests/storage_test.cpp")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/tests/storage_test.cpp" AND NOT USE_POSTGRESQL)
     add_executable(profi_services_unittest
         src/tests/storage_test.cpp
         src/user-service/storage.cpp

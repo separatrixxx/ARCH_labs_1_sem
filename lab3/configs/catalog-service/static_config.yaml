@@ -1,0 +1,61 @@
+components_manager:
+    task_processors:
+        main-task-processor:
+            worker_threads: 2
+            thread_name: main-worker
+        fs-task-processor:
+            worker_threads: 1
+            thread_name: fs-worker
+    default_task_processor: main-task-processor
+
+    components:
+        server:
+            listener:
+                port: 8082
+                task_processor: main-task-processor
+
+        logging:
+            fs-task-processor: fs-task-processor
+            loggers:
+                default:
+                    file_path: '@stderr'
+                    level: info
+                    overflow_behavior: discard
+
+        tracer:
+            service-name: catalog-service
+
+        statistics-storage: {}
+
+        dynamic-config:
+            fs-cache-path: ''
+            fs-task-processor: fs-task-processor
+
+        testsuite-support: {}
+
+        dns-client:
+            fs-task-processor: fs-task-processor
+
+        postgres-db:
+            dbconnection: $dbconnstring
+            blocking_task_processor: fs-task-processor
+            dns_resolver: async
+            sync-start: false
+
+        catalog-storage: {}
+
+        jwt-auth-middleware: {}
+
+        default-server-middleware-pipeline-builder:
+            append:
+              - jwt-auth-middleware
+
+        handler-services:
+            path: /api/v1/services
+            method: GET,POST
+            task_processor: main-task-processor
+
+        handler-service-by-id:
+            path: /api/v1/services/{id}
+            method: GET
+            task_processor: main-task-processor
