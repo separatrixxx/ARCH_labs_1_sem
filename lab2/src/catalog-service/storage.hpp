@@ -11,6 +11,8 @@
 #ifdef USE_POSTGRESQL
 #include <userver/storages/postgres/cluster.hpp>
 #include <userver/storages/postgres/component.hpp>
+#elif defined(USE_MONGODB)
+#include <userver/storages/mongo/pool.hpp>
 #else
 #include <atomic>
 #include <mutex>
@@ -43,6 +45,8 @@ public:
 private:
 #ifdef USE_POSTGRESQL
     userver::storages::postgres::ClusterPtr pg_;
+#elif defined(USE_MONGODB)
+    userver::storages::mongo::PoolPtr mongo_;
 #else
     std::string NextId() { return std::to_string(++counter_); }
 

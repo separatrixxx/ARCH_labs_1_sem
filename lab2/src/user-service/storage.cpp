@@ -1,8 +1,18 @@
 #include "storage.hpp"
 
-#ifndef USE_POSTGRESQL
+#if !defined(USE_POSTGRESQL) && !defined(USE_MONGODB)
 #include <algorithm>
 #include <cctype>
+#endif
+
+#ifdef USE_MONGODB
+#include <chrono>
+#include <userver/components/mongo.hpp>
+#include <userver/formats/bson/serialize.hpp>
+#include <userver/formats/bson/types.hpp>
+#include <userver/formats/bson/value_builder.hpp>
+#include <userver/storages/mongo/collection.hpp>
+#include <userver/storages/mongo/operations.hpp>
 #endif
 
 namespace profi {
@@ -91,6 +101,93 @@ User UserStorage::Create(const std::string& login, const std::string& email,
         "RETURNING id, login, email, first_name, last_name, password_hash",
         login, email, first_name, last_name, password_hash);
     return RowToUser(res.Front());
+}
+
+#elif defined(USE_MONGODB)
+
+namespace mg = userver::storages::mongo;
+namespace fb = userver::formats::bson;
+
+namespace {
+
+User DocToUser(const fb::Value& doc) {
+    return User{
+        doc["_id"].As<fb::Oid>().ToHexString(),
+        doc["login"].As<std::string>(),
+        doc["email"].As<std::string>(),
+        doc["first_name"].As<std::string>(),
+        doc["last_name"].As<std::string>(),
+        doc["password_hash"].As<std::string>(),
+    };
+}
+
+}
+
+UserStorage::UserStorage(const userver::components::ComponentConfig& config,
+                         const userver::components::ComponentContext& context)
+    : ComponentBase(config, context),
+      mongo_(context.FindComponent<userver::components::Mongo>("mongo-db").GetPool()) {}
+
+std::optional<User> UserStorage::FindByLogin(const std::string& login) const {
+    auto coll = mongo_->GetCollection("users");
+    mg::operations::Find find(fb::MakeDoc("login", login));
+    find.SetLimit(1);
+    for (const auto& doc : coll.Execute(find)) return DocToUser(doc);
+    return std::nullopt;
+}
+
+std::optional<User> UserStorage::FindById(const std::string& id) const {
+    try {
+        fb::Oid oid(id);
+        auto coll = mongo_->GetCollection("users");
+        mg::operations::Find find(fb::MakeDoc("_id", oid));
+        find.SetLimit(1);
+        for (const auto& doc : coll.Execute(find)) return DocToUser(doc);
+        return std::nullopt;
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+std::vector<User> UserStorage::FindAll() const {
+    auto coll = mongo_->GetCollection("users");
+    mg::operations::Find find(fb::MakeDoc());
+    find.SetSort(fb::MakeDoc("_id", 1));
+    std::vector<User> result;
+    for (const auto& doc : coll.Execute(find)) result.push_back(DocToUser(doc));
+    return result;
+}
+
+std::vector<User> UserStorage::FindByNameMask(
+    const std::string& first_name, const std::string& last_name) const {
+    fb::ValueBuilder filter(fb::ValueBuilder::Type::kObject);
+    if (!first_name.empty())
+        filter["first_name"] = fb::MakeDoc("$regex", first_name, "$options", "i");
+    if (!last_name.empty())
+        filter["last_name"] = fb::MakeDoc("$regex", last_name, "$options", "i");
+    auto coll = mongo_->GetCollection("users");
+    mg::operations::Find find(filter.ExtractValue());
+    std::vector<User> result;
+    for (const auto& doc : coll.Execute(find)) result.push_back(DocToUser(doc));
+    return result;
+}
+
+User UserStorage::Create(const std::string& login, const std::string& email,
+                          const std::string& first_name,
+                          const std::string& last_name,
+                          const std::string& password_hash) {
+    fb::Oid oid{};
+    fb::ValueBuilder doc;
+    doc["_id"]           = oid;
+    doc["login"]         = login;
+    doc["email"]         = email;
+    doc["first_name"]    = first_name;
+    doc["last_name"]     = last_name;
+    doc["password_hash"] = password_hash;
+    doc["created_at"]    = std::chrono::system_clock::now();
+    auto coll = mongo_->GetCollection("users");
+    coll.Execute(mg::operations::InsertOne(doc.ExtractValue()));
+    return User{oid.ToHexString(), login, email, first_name, last_name, password_hash};
 }
 
 #else

@@ -5,6 +5,10 @@
 #include <userver/clients/dns/component.hpp>
 #include <userver/storages/postgres/component.hpp>
 #include <userver/testsuite/testsuite_support.hpp>
+#elif defined(USE_MONGODB)
+#include <userver/clients/dns/component.hpp>
+#include <userver/storages/mongo/component.hpp>
+#include <userver/testsuite/testsuite_support.hpp>
 #endif
 
 #include "storage.hpp"
@@ -17,6 +21,10 @@ int main(int argc, char* argv[]) {
 #ifdef USE_POSTGRESQL
             .Append<userver::components::TestsuiteSupport>()
             .Append<userver::components::Postgres>("postgres-db")
+            .Append<userver::clients::dns::Component>()
+#elif defined(USE_MONGODB)
+            .Append<userver::components::TestsuiteSupport>()
+            .Append<userver::components::Mongo>("mongo-db")
             .Append<userver::clients::dns::Component>()
 #endif
             .Append<profi::CatalogStorage>()

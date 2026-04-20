@@ -1,5 +1,16 @@
 #include "storage.hpp"
 
+#ifdef USE_MONGODB
+#include <chrono>
+#include <stdexcept>
+#include <userver/components/mongo.hpp>
+#include <userver/formats/bson/serialize.hpp>
+#include <userver/formats/bson/types.hpp>
+#include <userver/formats/bson/value_builder.hpp>
+#include <userver/storages/mongo/collection.hpp>
+#include <userver/storages/mongo/operations.hpp>
+#endif
+
 namespace profi {
 
 #ifdef USE_POSTGRESQL
@@ -31,7 +42,11 @@ Order OrderStorage::FetchOrder(const std::string& id) const {
     order.client_id = std::to_string(order_res.Front()["client_id"].As<int64_t>());
     order.status    = order_res.Front()["status"].As<std::string>();
     for (auto row : svc_res)
+#ifdef SERVICE_ID_TEXT
+        order.service_ids.push_back(row["service_id"].As<std::string>());
+#else
         order.service_ids.push_back(std::to_string(row["service_id"].As<int64_t>()));
+#endif
     return order;
 }
 
@@ -61,11 +76,19 @@ std::optional<Order> OrderStorage::AddService(const std::string& order_id,
         std::stoll(order_id));
     if (check.IsEmpty()) return std::nullopt;
 
+#ifdef SERVICE_ID_TEXT
+    pg_->Execute(
+        pg::ClusterHostType::kMaster,
+        "INSERT INTO order_services (order_id, service_id) VALUES ($1, $2) "
+        "ON CONFLICT DO NOTHING",
+        std::stoll(order_id), service_id);
+#else
     pg_->Execute(
         pg::ClusterHostType::kMaster,
         "INSERT INTO order_services (order_id, service_id) VALUES ($1, $2) "
         "ON CONFLICT DO NOTHING",
         std::stoll(order_id), std::stoll(service_id));
+#endif
 
     return FetchOrder(order_id);
 }
@@ -83,6 +106,100 @@ std::vector<Order> OrderStorage::FindByClientId(
         const auto oid = std::to_string(row["id"].As<int64_t>());
         result.push_back(FetchOrder(oid));
     }
+    return result;
+}
+
+#elif defined(USE_MONGODB)
+
+namespace mg = userver::storages::mongo;
+namespace fb = userver::formats::bson;
+
+namespace {
+
+Order DocToOrder(const fb::Value& doc) {
+    Order order;
+    order.id        = doc["_id"].As<fb::Oid>().ToHexString();
+    order.client_id = doc["client_id"].As<std::string>();
+    order.status    = doc["status"].As<std::string>("pending");
+    if (!doc["service_ids"].IsMissing()) {
+        for (const auto& v : doc["service_ids"])
+            order.service_ids.push_back(v.As<std::string>());
+    }
+    return order;
+}
+
+}
+
+OrderStorage::OrderStorage(
+    const userver::components::ComponentConfig& config,
+    const userver::components::ComponentContext& context)
+    : ComponentBase(config, context),
+      mongo_(context.FindComponent<userver::components::Mongo>("mongo-db").GetPool()) {}
+
+Order OrderStorage::FetchOrder(const std::string& id) const {
+    fb::Oid oid(id);
+    auto coll = mongo_->GetCollection("orders");
+    mg::operations::Find find(fb::MakeDoc("_id", oid));
+    find.SetLimit(1);
+    for (const auto& doc : coll.Execute(find)) return DocToOrder(doc);
+    throw std::runtime_error("Order not found: " + id);
+}
+
+Order OrderStorage::Create(const std::string& client_id) {
+    fb::Oid oid{};
+    fb::ValueBuilder doc;
+    doc["_id"]         = oid;
+    doc["client_id"]   = client_id;
+    doc["status"]      = std::string("pending");
+    doc["service_ids"] = fb::MakeArray();
+    doc["created_at"]  = std::chrono::system_clock::now();
+    auto coll = mongo_->GetCollection("orders");
+    coll.Execute(mg::operations::InsertOne(doc.ExtractValue()));
+    return FetchOrder(oid.ToHexString());
+}
+
+std::optional<Order> OrderStorage::FindById(const std::string& id) const {
+    try {
+        fb::Oid oid(id);
+        auto coll = mongo_->GetCollection("orders");
+        mg::operations::Find find(fb::MakeDoc("_id", oid));
+        find.SetLimit(1);
+        bool found = false;
+        for (const auto& _ : coll.Execute(find)) { found = true; }
+        if (!found) return std::nullopt;
+        return FetchOrder(id);
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+std::optional<Order> OrderStorage::AddService(const std::string& order_id,
+                                               const std::string& service_id) {
+    try {
+        fb::Oid oid(order_id);
+        auto coll = mongo_->GetCollection("orders");
+        mg::operations::Find check(fb::MakeDoc("_id", oid));
+        check.SetLimit(1);
+        bool found = false;
+        for (const auto& _ : coll.Execute(check)) { found = true; }
+        if (!found) return std::nullopt;
+        mg::operations::UpdateOne upd(
+            fb::MakeDoc("_id", oid),
+            fb::MakeDoc("$addToSet", fb::MakeDoc("service_ids", service_id)));
+        coll.Execute(upd);
+        return FetchOrder(order_id);
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+std::vector<Order> OrderStorage::FindByClientId(
+    const std::string& client_id) const {
+    auto coll = mongo_->GetCollection("orders");
+    mg::operations::Find find(fb::MakeDoc("client_id", client_id));
+    find.SetSort(fb::MakeDoc("_id", 1));
+    std::vector<Order> result;
+    for (const auto& doc : coll.Execute(find)) result.push_back(DocToOrder(doc));
     return result;
 }
 

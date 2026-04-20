@@ -6,6 +6,9 @@
 #ifdef USE_POSTGRESQL
 #include <userver/storages/postgres/component.hpp>
 #include <userver/testsuite/testsuite_support.hpp>
+#elif defined(USE_MONGODB)
+#include <userver/components/mongo.hpp>
+#include <userver/testsuite/testsuite_support.hpp>
 #endif
 
 #include "storage.hpp"
@@ -18,6 +21,9 @@ int main(int argc, char* argv[]) {
 #ifdef USE_POSTGRESQL
             .Append<userver::components::TestsuiteSupport>()
             .Append<userver::components::Postgres>("postgres-db")
+#elif defined(USE_MONGODB)
+            .Append<userver::components::TestsuiteSupport>()
+            .Append<userver::components::Mongo>("mongo-db")
 #endif
             .Append<profi::OrderStorage>()
             .Append<profi::JwtAuthMiddlewareFactory>()

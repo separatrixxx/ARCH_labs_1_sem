@@ -5,12 +5,18 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(USE_POSTGRESQL "Use PostgreSQL storage backend instead of in-memory" OFF)
+option(USE_MONGODB    "Use MongoDB storage backend instead of in-memory"    OFF)
+option(USE_MIXED      "PostgreSQL for user/order, MongoDB for catalog"      OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(DownloadUserver)
 
-if(USE_POSTGRESQL)
+if(USE_MIXED)
+  find_package(userver COMPONENTS core postgresql mongo QUIET)
+elseif(USE_POSTGRESQL)
   find_package(userver COMPONENTS core postgresql QUIET)
+elseif(USE_MONGODB)
+  find_package(userver COMPONENTS core mongo QUIET)
 else()
   find_package(userver COMPONENTS core QUIET)
 endif()
@@ -64,10 +70,26 @@ target_include_directories(order_service PRIVATE
     src/shared
 )
 
-if(USE_POSTGRESQL)
+if(USE_MIXED)
+  # PostgreSQL for user-service and order-service
+  foreach(svc user_service order_service)
+    target_link_libraries(${svc} PRIVATE userver::postgresql)
+    target_compile_definitions(${svc} PRIVATE USE_POSTGRESQL)
+  endforeach()
+  # order_services.service_id хранит MongoDB ObjectId (TEXT, не BIGINT)
+  target_compile_definitions(order_service PRIVATE SERVICE_ID_TEXT)
+  # MongoDB for catalog-service
+  target_link_libraries(catalog_service PRIVATE userver::mongo)
+  target_compile_definitions(catalog_service PRIVATE USE_MONGODB)
+elseif(USE_POSTGRESQL)
   foreach(svc user_service catalog_service order_service)
     target_link_libraries(${svc} PRIVATE userver::postgresql)
     target_compile_definitions(${svc} PRIVATE USE_POSTGRESQL)
+  endforeach()
+elseif(USE_MONGODB)
+  foreach(svc user_service catalog_service order_service)
+    target_link_libraries(${svc} PRIVATE userver::mongo)
+    target_compile_definitions(${svc} PRIVATE USE_MONGODB)
   endforeach()
 endif()
 

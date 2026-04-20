@@ -1,5 +1,17 @@
 #include "storage.hpp"
 
+#ifdef USE_MONGODB
+#include <chrono>
+#include <userver/storages/mongo/component.hpp>
+#include <userver/formats/bson/serialize.hpp>
+#include <userver/formats/bson/types.hpp>
+#include <userver/formats/bson/value_builder.hpp>
+#include <userver/formats/common/type.hpp>
+#include <userver/storages/mongo/collection.hpp>
+#include <userver/storages/mongo/operations.hpp>
+#include <userver/storages/mongo/options.hpp>
+#endif
+
 namespace profi {
 
 #ifdef USE_POSTGRESQL
@@ -58,6 +70,79 @@ std::optional<Service> CatalogStorage::FindById(const std::string& id) const {
         std::stoll(id));
     if (res.IsEmpty()) return std::nullopt;
     return RowToService(res.Front());
+}
+
+#elif defined(USE_MONGODB)
+
+namespace mg = userver::storages::mongo;
+namespace fb = userver::formats::bson;
+namespace mo = userver::storages::mongo::options;
+
+namespace {
+
+Service DocToService(const fb::Value& doc) {
+    std::string description;
+    if (!doc["description"].IsMissing() && doc["description"].IsString())
+        description = doc["description"].As<std::string>();
+    return Service{
+        doc["_id"].As<fb::Oid>().ToString(),
+        doc["title"].As<std::string>(),
+        description,
+        doc["price"].As<double>(),
+        doc["provider_id"].As<std::string>(),
+    };
+}
+
+fb::Value EmptyDoc() {
+    return fb::ValueBuilder(userver::formats::common::Type::kObject).ExtractValue();
+}
+
+}
+
+CatalogStorage::CatalogStorage(
+    const userver::components::ComponentConfig& config,
+    const userver::components::ComponentContext& context)
+    : ComponentBase(config, context),
+      mongo_(context.FindComponent<userver::components::Mongo>("mongo-db").GetPool()) {}
+
+Service CatalogStorage::Create(const std::string& title,
+                                const std::string& description, double price,
+                                const std::string& provider_id) {
+    fb::Oid oid{};
+    fb::ValueBuilder doc;
+    doc["_id"]         = oid;
+    doc["title"]       = title;
+    doc["description"] = description;
+    doc["price"]       = price;
+    doc["provider_id"] = provider_id;
+    doc["created_at"]  = std::chrono::system_clock::now();
+    auto coll = mongo_->GetCollection("services");
+    coll.Execute(mg::operations::InsertOne(doc.ExtractValue()));
+    return Service{oid.ToString(), title, description, price, provider_id};
+}
+
+std::vector<Service> CatalogStorage::GetAll() const {
+    auto coll = mongo_->GetCollection("services");
+    mg::operations::Find find(EmptyDoc());
+    find.SetOption(mo::Sort{}.By("_id", mo::Sort::Direction::kAscending));
+    std::vector<Service> result;
+    for (const auto& doc : coll.Execute(find)) result.push_back(DocToService(doc));
+    return result;
+}
+
+std::optional<Service> CatalogStorage::FindById(const std::string& id) const {
+    try {
+        fb::Oid oid(id);
+        fb::ValueBuilder filter_builder;
+        filter_builder["_id"] = oid;
+        auto coll = mongo_->GetCollection("services");
+        mg::operations::Find find(filter_builder.ExtractValue());
+        find.SetOption(mo::Limit{1});
+        for (const auto& doc : coll.Execute(find)) return DocToService(doc);
+        return std::nullopt;
+    } catch (...) {
+        return std::nullopt;
+    }
 }
 
 #else
