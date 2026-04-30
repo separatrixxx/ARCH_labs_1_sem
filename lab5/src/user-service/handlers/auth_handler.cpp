@@ -1,0 +1,163 @@
+#include "auth_handler.hpp"
+
+#include <openssl/sha.h>
+
+#include <userver/formats/json/serialize.hpp>
+#include <userver/formats/json/value_builder.hpp>
+#include <userver/server/handlers/exceptions.hpp>
+
+#include "auth_middleware.hpp"
+#include "dto.hpp"
+
+namespace profi::handlers {
+
+namespace fj = userver::formats::json;
+namespace hs = userver::server::handlers;
+
+namespace {
+
+std::string Sha256Hex(const std::string& input) {
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256(reinterpret_cast<const unsigned char*>(input.data()), input.size(), hash);
+    char hex[SHA256_DIGEST_LENGTH * 2 + 1];
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
+        snprintf(hex + i * 2, 3, "%02x", hash[i]);
+    }
+    return std::string(hex, SHA256_DIGEST_LENGTH * 2);
+}
+
+fj::Value ToJson(const dto::UserResponse& u) {
+    fj::ValueBuilder b;
+    b["id"] = u.id;
+    b["login"] = u.login;
+    b["email"] = u.email;
+    b["first_name"] = u.first_name;
+    b["last_name"] = u.last_name;
+    return b.ExtractValue();
+}
+
+dto::UserResponse ToDto(const User& u) {
+    return {u.id, u.login, u.email, u.first_name, u.last_name};
+}
+
+}
+
+RegisterHandler::RegisterHandler(
+    const userver::components::ComponentConfig& config,
+    const userver::components::ComponentContext& context)
+    : HttpHandlerBase(config, context),
+      storage_(context.FindComponent<UserStorage>())
+#ifdef USE_CACHE
+      , redis_(context.FindComponent<RedisCache>())
+#endif
+{}
+
+std::string RegisterHandler::HandleRequestThrow(
+    const userver::server::http::HttpRequest& request,
+    userver::server::request::RequestContext&) const {
+
+#ifdef USE_CACHE
+    const auto& client_ip = request.GetHeader("X-Real-IP");
+    auto ip_key = client_ip.empty() ? std::string("unknown") : std::string(client_ip);
+    auto rl = redis_.CheckRateLimit("rl:register:" + ip_key, 5, 60);
+
+    auto& resp = request.GetHttpResponse();
+    resp.SetHeader(std::string_view{"X-RateLimit-Limit"}, std::to_string(rl.limit));
+    resp.SetHeader(std::string_view{"X-RateLimit-Remaining"}, std::to_string(rl.remaining));
+    resp.SetHeader(std::string_view{"X-RateLimit-Reset"}, std::to_string(rl.reset_after));
+
+    if (!rl.allowed) {
+        resp.SetStatus(userver::server::http::HttpStatus{429});
+        resp.SetContentType("application/json");
+        return R"({"error":"Too many requests. Try again later."})";
+    }
+#endif
+
+    const auto body = fj::FromString(request.RequestBody());
+    dto::RegisterRequest req{
+        body["login"].As<std::string>(""),
+        body["email"].As<std::string>(""),
+        body["first_name"].As<std::string>(""),
+        body["last_name"].As<std::string>(""),
+        body["password"].As<std::string>(""),
+    };
+
+    if (req.login.empty() || req.password.empty() ||
+        req.first_name.empty() || req.last_name.empty()) {
+        throw hs::ExceptionWithCode<hs::HandlerErrorCode::kClientError>(
+            hs::ExternalBody{R"({"error":"login, first_name, last_name, password are required"})"});
+    }
+
+    if (req.password.size() < 6) {
+        throw hs::ExceptionWithCode<hs::HandlerErrorCode::kClientError>(
+            hs::ExternalBody{R"({"error":"password must be at least 6 characters"})"});
+    }
+
+    if (storage_.FindByLogin(req.login)) {
+        throw hs::ExceptionWithCode<hs::HandlerErrorCode::kConflictState>(
+            hs::ExternalBody{R"({"error":"User with this login already exists"})"});
+    }
+
+    const auto user = storage_.Create(
+        req.login, req.email, req.first_name, req.last_name, Sha256Hex(req.password));
+    request.GetHttpResponse().SetStatus(userver::server::http::HttpStatus::kCreated);
+    request.GetHttpResponse().SetContentType("application/json");
+    return fj::ToString(ToJson(ToDto(user)));
+}
+
+LoginHandler::LoginHandler(
+    const userver::components::ComponentConfig& config,
+    const userver::components::ComponentContext& context)
+    : HttpHandlerBase(config, context),
+      storage_(context.FindComponent<UserStorage>())
+#ifdef USE_CACHE
+      , redis_(context.FindComponent<RedisCache>())
+#endif
+{}
+
+std::string LoginHandler::HandleRequestThrow(
+    const userver::server::http::HttpRequest& request,
+    userver::server::request::RequestContext&) const {
+
+#ifdef USE_CACHE
+    const auto& client_ip = request.GetHeader("X-Real-IP");
+    auto ip_key = client_ip.empty() ? std::string("unknown") : std::string(client_ip);
+    auto rl = redis_.CheckRateLimit("rl:login:" + ip_key, 10, 60);
+
+    auto& resp = request.GetHttpResponse();
+    resp.SetHeader(std::string_view{"X-RateLimit-Limit"}, std::to_string(rl.limit));
+    resp.SetHeader(std::string_view{"X-RateLimit-Remaining"}, std::to_string(rl.remaining));
+    resp.SetHeader(std::string_view{"X-RateLimit-Reset"}, std::to_string(rl.reset_after));
+
+    if (!rl.allowed) {
+        resp.SetStatus(userver::server::http::HttpStatus{429});
+        resp.SetContentType("application/json");
+        return R"({"error":"Too many requests. Try again later."})";
+    }
+#endif
+
+    const auto body = fj::FromString(request.RequestBody());
+    dto::LoginRequest req{
+        body["login"].As<std::string>(""),
+        body["password"].As<std::string>(""),
+    };
+
+    if (req.login.empty() || req.password.empty()) {
+        throw hs::ExceptionWithCode<hs::HandlerErrorCode::kClientError>(
+            hs::ExternalBody{R"({"error":"login and password are required"})"});
+    }
+
+    const auto user = storage_.FindByLogin(req.login);
+
+    if (!user || user->password_hash != Sha256Hex(req.password)) {
+        throw hs::ExceptionWithCode<hs::HandlerErrorCode::kUnauthorized>(
+            hs::ExternalBody{R"({"error":"Invalid login or password"})"});
+    }
+
+    fj::ValueBuilder token_resp;
+    token_resp["token"] = jwt::Create(user->id, user->login, kJwtSecret);
+    request.GetHttpResponse().SetContentType("application/json");
+    return fj::ToString(token_resp.ExtractValue());
+}
+
+}

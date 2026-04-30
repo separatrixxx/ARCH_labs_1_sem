@@ -1,0 +1,5 @@
+worker_threads: 4
+dbconnstring: "host=postgres port=5432 dbname=profidb user=profi password=profi"
+mongodbconnstring: "mongodb://profi:profi@mongo:27017/profidb?authSource=admin"
+redis_host: "redis"
+redis_port: 6379
