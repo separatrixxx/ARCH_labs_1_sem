@@ -1,0 +1,71 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: profi
+      RABBITMQ_DEFAULT_PASS: profi
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+  producer:
+    build:
+      context: ./producer
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: profi
+      RABBITMQ_PASS: profi
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
+  notification-consumer:
+    build:
+      context: ./consumer
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: profi
+      RABBITMQ_PASS: profi
+      CONSUMER_QUEUE: notifications
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
+  analytics-consumer:
+    build:
+      context: ./consumer
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: profi
+      RABBITMQ_PASS: profi
+      CONSUMER_QUEUE: analytics
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
+  cache-consumer:
+    build:
+      context: ./consumer
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: profi
+      RABBITMQ_PASS: profi
+      CONSUMER_QUEUE: cache_invalidation
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  rabbitmq_data:
