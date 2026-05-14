@@ -78,6 +78,8 @@
 
 ### Архитектура
 
+Три микросервиса-producer-а кидают события в RabbitMQ, оттуда они разлетаются по трём очередям - каждая для своего consumer-а:
+
 ```text
      ┌──────────────┐  ┌───────────────┐  ┌──────────────┐
      │ user-service  │  │catalog-service│  │ order-service │
@@ -102,9 +104,9 @@
      └────────────────┘ └──────────┘ └────────────────────┘
 ```
 
-### Выбор брокера
+### Почему RabbitMQ
 
-**RabbitMQ** — topic exchange с routing keys для гибкой маршрутизации событий. Обоснование в `event_driven_design.md`.
+Взял RabbitMQ с topic exchange - для маркетплейса с умеренной нагрузкой Kafka была бы избыточна. Topic exchange удобен тем, что разные consumer-ы подписываются на разные routing keys, а analytics может подписаться на `#` и ловить вообще всё. Подробное обоснование в `event_driven_design.md`.
 
 ### События системы
 
@@ -116,15 +118,15 @@
 | `order.service_added` | order-service | notifications, analytics |
 | `order.status_changed` | order-service | notifications, cache_invalidation, analytics |
 
-Подробная документация: `event_catalog.md`
+Подробнее про payload и реакции consumer-ов — в `event_catalog.md`.
 
 ### CQRS
 
-Система разделена на write-модель (PostgreSQL/MongoDB) и read-модель (Redis). События синхронизируют модели: при изменении данных публикуется событие, cache-consumer инвалидирует соответствующие ключи в Redis. Подробнее: `event_driven_design.md`, раздел 4.
+Разделение уже было в lab5, тут оно формализовано через события. Когда данные меняются, сервис публикует событие, cache-consumer подхватывает и инвалидирует нужные ключи в Redis. Подробнее в `event_driven_design.md`, раздел 4.
 
 ### Гарантии доставки
 
-At-least-once: persistent messages + durable queues + manual ack + prefetch=1. Идемпотентность через `event_id` (UUID).
+At-least-once: persistent messages, durable queues, manual ack, prefetch=1. Дубликаты отсекаются по `event_id` (UUID). Exactly-once не стали делать — слишком сложно для текущих требований, а at-least-once + идемпотентность дают тот же эффект.
 
 ### Структура файлов
 
@@ -151,16 +153,16 @@ cd lab6
 docker-compose up --build
 ```
 
-Сервисы:
+После запуска будет доступно:
 
-- RabbitMQ: `localhost:5672`
-- RabbitMQ Management UI: `http://localhost:15672` (profi/profi)
-- Producer: публикует 6 событий каждые 30 секунд
-- 3 Consumer-а: notification, analytics, cache-invalidation
+- RabbitMQ AMQP: `localhost:5672`
+- RabbitMQ Management UI: `http://localhost:15672` (логин/пароль: profi/profi)
+- Producer публикует 6 событий, ждёт 30 секунд, повторяет
+- Три consumer-а работают параллельно, каждый вычитывает свою очередь
 
 ### Проверка работы
 
-Логи producer:
+Смотрим логи producer-а — он выводит каждое опубликованное событие:
 
 ```bash
 docker-compose logs -f producer
@@ -172,7 +174,7 @@ docker-compose logs -f producer
 [PUBLISHED] order.created: {"order_id": "101", "client_id": "14", ...}
 ```
 
-Логи consumer-ов:
+А в логах consumer-ов видно, как они обрабатывают события:
 
 ```bash
 docker-compose logs -f notification-consumer
@@ -196,6 +198,4 @@ docker-compose logs -f analytics-consumer
 
 ### Мониторинг через RabbitMQ UI
 
-1. Открыть `http://localhost:15672`
-2. Вкладка **Exchanges** — виден `profi.events` (topic)
-3. Вкладка **Queues** — видны 3 очереди с bindings и счётчиками сообщений
+Открываем `http://localhost:15672`, логинимся (profi/profi). На вкладке Exchanges будет виден `profi.events` (topic), на вкладке Queues - три наши очереди с bindings и счётчиками сообщений. Можно руками кинуть тестовое сообщение через интерфейс.
