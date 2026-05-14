@@ -8,8 +8,6 @@ CREATE TABLE IF NOT EXISTS users (
     created_at    TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
 
--- Таблица services отсутствует: каталог хранится в MongoDB
-
 CREATE TABLE IF NOT EXISTS orders (
     id         BIGSERIAL   PRIMARY KEY,
     client_id  BIGINT      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -20,7 +18,7 @@ CREATE TABLE IF NOT EXISTS orders (
 
 CREATE TABLE IF NOT EXISTS order_services (
     order_id   BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-    service_id TEXT   NOT NULL,  -- MongoDB ObjectId каталога услуг
+    service_id TEXT   NOT NULL,
     PRIMARY KEY (order_id, service_id)
 );
 

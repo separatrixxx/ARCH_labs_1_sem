@@ -12,8 +12,6 @@ INSERT INTO users (login, email, first_name, last_name, password_hash) VALUES
     ('andrey.zaitsev', 'andrey.zaitsev@example.com', 'Андрей',    'Зайцев',     'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f'),
     ('yulia.sorokina', 'yulia.sorokina@example.com', 'Юлия',      'Сорокина',   'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f');
 
--- service_id ссылается на MongoDB ObjectId из коллекции services
--- Те же фиксированные ObjectId, что в data.js
 INSERT INTO orders (client_id, status) VALUES
     (2,  'completed'),
     (2,  'confirmed'),

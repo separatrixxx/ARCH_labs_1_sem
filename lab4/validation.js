@@ -1,8 +1,5 @@
 use profidb
 
-// ── Валидация коллекции services ──────────────────────────────────────────────
-// Пользователи и заказы хранятся в PostgreSQL — валидация на стороне РСУБД.
-
 db.createCollection("services", {
     validator: {
         $jsonSchema: {
@@ -20,13 +17,11 @@ db.createCollection("services", {
                 },
                 price: {
                     bsonType: "double",
-                    minimum: 0,
-                    description: "Цена не может быть отрицательной"
+                    minimum: 0
                 },
                 provider_id: {
                     bsonType: "string",
-                    minLength: 1,
-                    description: "ID провайдера из PostgreSQL (users.id)"
+                    minLength: 1
                 },
                 created_at: {
                     bsonType: "date"
@@ -40,9 +35,7 @@ db.createCollection("services", {
 
 print("Validation schema applied to services");
 
-// ── Тесты: невалидные документы должны отклоняться ───────────────────────────
-
-print("\n--- Тест 1: отрицательная цена (должна быть ошибка) ---");
+print("\n--- Тест 1: отрицательная цена ---");
 try {
     db.services.insertOne({
         title: "Плохая услуга",
@@ -50,12 +43,12 @@ try {
         provider_id: "1",
         created_at: new Date()
     });
-    print("FAIL: документ принят, а должен был отклонён");
+    print("FAIL: документ принят, а не должен был");
 } catch (e) {
     print("OK: " + e.message);
 }
 
-print("\n--- Тест 2: пустой title (должна быть ошибка) ---");
+print("\n--- Тест 2: пустой title ---");
 try {
     db.services.insertOne({
         title: "",
@@ -63,24 +56,24 @@ try {
         provider_id: "1",
         created_at: new Date()
     });
-    print("FAIL: документ принят, а должен был отклонён");
+    print("FAIL: документ принят, а не должен был");
 } catch (e) {
     print("OK: " + e.message);
 }
 
-print("\n--- Тест 3: отсутствует required-поле price (должна быть ошибка) ---");
+print("\n--- Тест 3: нет поля price ---");
 try {
     db.services.insertOne({
         title: "Без цены",
         provider_id: "1",
         created_at: new Date()
     });
-    print("FAIL: документ принят, а должен был отклонён");
+    print("FAIL: документ принят, а не должен был");
 } catch (e) {
     print("OK: " + e.message);
 }
 
-print("\n--- Тест 4: валидный документ (должен быть принят) ---");
+print("\n--- Тест 4: валидный документ ---");
 try {
     const result = db.services.insertOne({
         title: "Тестовая услуга",

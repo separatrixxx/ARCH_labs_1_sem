@@ -5,14 +5,13 @@
 namespace profi {
 
 RedisCache::RedisCache(const userver::components::ComponentConfig& config,
-                       const userver::components::ComponentContext& context)
-    : LoggableComponentBase(config, context),
+                       const userver::components::ComponentContext& ctx)
+    : LoggableComponentBase(config, ctx),
       host_(config["host"].As<std::string>("redis")),
       port_(config["port"].As<int>(6379)) {
     EnsureConnected();
-    if (ctx_) {
-        LOG_INFO() << "Redis cache connected to " << host_ << ":" << port_;
-    }
+    if (ctx_)
+        LOG_INFO() << "Redis connected: " << host_ << ":" << port_;
 }
 
 RedisCache::~RedisCache() {
@@ -149,15 +148,15 @@ userver::yaml_config::Schema RedisCache::GetStaticConfigSchema() {
     return userver::yaml_config::MergeSchemas<
         userver::components::LoggableComponentBase>(R"(
 type: object
-description: Redis cache client for caching and rate limiting
+description: Redis client (cache + rate limiting)
 additionalProperties: false
 properties:
     host:
         type: string
-        description: Redis server hostname
+        description: hostname
     port:
         type: integer
-        description: Redis server port
+        description: port
 )");
 }
 

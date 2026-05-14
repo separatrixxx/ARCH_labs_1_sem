@@ -69,84 +69,68 @@ EVENTS = [
 
 
 def connect():
-    credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
+    creds = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
     params = pika.ConnectionParameters(
-        host=RABBITMQ_HOST,
-        credentials=credentials,
-        heartbeat=600,
+        host=RABBITMQ_HOST, credentials=creds, heartbeat=600,
     )
     return pika.BlockingConnection(params)
 
 
-def setup_topology(channel):
-    channel.exchange_declare(
-        exchange=EXCHANGE,
-        exchange_type="topic",
-        durable=True,
-    )
+def setup_topology(ch):
+    ch.exchange_declare(exchange=EXCHANGE, exchange_type="topic", durable=True)
 
     queues = {
         "notifications": [
-            "user.registered",
-            "order.created",
-            "order.service_added",
-            "order.status_changed",
+            "user.registered", "order.created",
+            "order.service_added", "order.status_changed",
         ],
         "analytics": ["#"],
-        "cache_invalidation": [
-            "service.created",
-            "order.status_changed",
-        ],
+        "cache_invalidation": ["service.created", "order.status_changed"],
     }
 
-    for queue_name, bindings in queues.items():
-        channel.queue_declare(queue=queue_name, durable=True)
-        for routing_key in bindings:
-            channel.queue_bind(
-                exchange=EXCHANGE,
-                queue=queue_name,
-                routing_key=routing_key,
-            )
+    for q_name, keys in queues.items():
+        ch.queue_declare(queue=q_name, durable=True)
+        for rk in keys:
+            ch.queue_bind(exchange=EXCHANGE, queue=q_name, routing_key=rk)
 
     print(f"Topology ready: exchange={EXCHANGE}, queues={list(queues.keys())}")
 
 
-def publish_event(channel, routing_key, payload):
+def publish_event(ch, routing_key, payload):
     event = {
         "event_id": str(uuid.uuid4()),
         "event_type": routing_key,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "payload": payload,
     }
+    body = json.dumps(event, ensure_ascii=False)
 
-    channel.basic_publish(
+    ch.basic_publish(
         exchange=EXCHANGE,
         routing_key=routing_key,
-        body=json.dumps(event, ensure_ascii=False),
+        body=body,
         properties=pika.BasicProperties(
             delivery_mode=2,
             content_type="application/json",
         ),
     )
-
     print(f"[PUBLISHED] {routing_key}: {json.dumps(payload, ensure_ascii=False)}")
 
 
 def main():
-    connection = connect()
-    channel = connection.channel()
-    setup_topology(channel)
+    conn = connect()
+    ch = conn.channel()
+    setup_topology(ch)
 
     print(f"\nPublishing {len(EVENTS)} events...\n")
 
-    for event_def in EVENTS:
-        publish_event(channel, event_def["routing_key"], event_def["payload"])
+    for ev in EVENTS:
+        publish_event(ch, ev["routing_key"], ev["payload"])
         time.sleep(1)
 
-    print("\nAll events published. Waiting 30s before next cycle...\n")
+    print("\nDone. Waiting 30s before next cycle...\n")
     time.sleep(30)
-
-    connection.close()
+    conn.close()
 
 
 if __name__ == "__main__":

@@ -24,58 +24,59 @@ HANDLERS = {
             f"  -> Уведомить: заказ #{p['order_id']} — {p['old_status']} -> {p['new_status']}"
         ),
     },
+
     "analytics": {
         "*": lambda event_type, p: print(
             f"  -> Записать в аналитику: {event_type} | {json.dumps(p, ensure_ascii=False)}"
         ),
     },
+
     "cache_invalidation": {
         "service.created": lambda p: print(
-            f"  -> Инвалидировать кеш: DEL services:all (новая услуга: {p['title']})"
+            f"  -> DEL services:all (новая услуга: {p['title']})"
         ),
         "order.status_changed": lambda p: print(
-            f"  -> Инвалидировать кеш: DEL orders:client:{p.get('client_id', '?')}"
+            f"  -> DEL orders:client:{p.get('client_id', '?')}"
         ),
     },
 }
 
 
-def on_message(channel, method, properties, body):
+def on_message(ch, method, properties, body):
     event = json.loads(body)
     event_type = event.get("event_type", "unknown")
     payload = event.get("payload", {})
-    timestamp = event.get("timestamp", "?")
+    ts = event.get("timestamp", "?")
 
-    print(f"\n[{QUEUE.upper()}] Received: {event_type} at {timestamp}")
+    print(f"\n[{QUEUE.upper()}] Received: {event_type} at {ts}")
 
-    queue_handlers = HANDLERS.get(QUEUE, {})
+    handlers = HANDLERS.get(QUEUE, {})
 
-    if "*" in queue_handlers:
-        queue_handlers["*"](event_type, payload)
-    elif event_type in queue_handlers:
-        queue_handlers[event_type](payload)
+    if "*" in handlers:
+        handlers["*"](event_type, payload)
+    elif event_type in handlers:
+        handlers[event_type](payload)
     else:
-        print(f"  -> No handler for {event_type}, skipping")
+        print(f"  -> нет обработчика для {event_type}, пропускаем")
 
-    channel.basic_ack(delivery_tag=method.delivery_tag)
+    ch.basic_ack(delivery_tag=method.delivery_tag)
 
 
 def main():
-    credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
+    creds = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
     params = pika.ConnectionParameters(
-        host=RABBITMQ_HOST,
-        credentials=credentials,
-        heartbeat=600,
+        host=RABBITMQ_HOST, credentials=creds, heartbeat=600,
     )
-    connection = pika.BlockingConnection(params)
-    channel = connection.channel()
 
-    channel.queue_declare(queue=QUEUE, durable=True)
-    channel.basic_qos(prefetch_count=1)
-    channel.basic_consume(queue=QUEUE, on_message_callback=on_message)
+    conn = pika.BlockingConnection(params)
+    ch = conn.channel()
 
-    print(f"[{QUEUE.upper()}] Consumer started. Waiting for events...")
-    channel.start_consuming()
+    ch.queue_declare(queue=QUEUE, durable=True)
+    ch.basic_qos(prefetch_count=1)
+    ch.basic_consume(queue=QUEUE, on_message_callback=on_message)
+
+    print(f"[{QUEUE.upper()}] Consumer started, waiting for events...")
+    ch.start_consuming()
 
 
 if __name__ == "__main__":

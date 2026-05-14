@@ -48,7 +48,7 @@
 
 ---
 
-Продолжение [lab2](../lab2) — маркетплейс профессиональных услуг «Profi». In-memory хранилище заменено на PostgreSQL. Все три сервиса (user, catalog, order) подключены к единой БД.
+Продолжение [lab2](../lab2) — маркетплейс «Profi». Тут заменил in-memory хранилище на PostgreSQL, все три сервиса теперь ходят в одну базу.
 
 ## Архитектура
 
@@ -65,6 +65,8 @@ nginx:8080  ──┬──▶  user-service:8081    /api/v1/auth, /api/v1/users
 ---
 
 ## Схема базы данных
+
+Четыре таблицы: пользователи, услуги, заказы и связь M:N между заказами и услугами.
 
 ```
 users
@@ -99,21 +101,25 @@ order_services  (M:N)
 
 ### Связи
 
-- `services.provider_id → users.id` — пользователь предоставляет услуги
-- `orders.client_id → users.id` — пользователь создаёт заказы
-- `order_services` — M:N между заказами и услугами
+- `services.provider_id → users.id` — провайдер (пользователь) предоставляет услуги
+- `orders.client_id → users.id` — клиент (тоже пользователь) создаёт заказы
+- `order_services` — промежуточная таблица для M:N между заказами и услугами
 
 ### Индексы
 
-| Индекс | Колонки | Назначение |
-|--------|---------|------------|
-| `users_login_key` (UNIQUE, авто) | `login` | Логин при аутентификации |
-| `idx_users_name` | `lower(first_name), lower(last_name)` | Поиск по маске имени |
-| `idx_services_provider_id` | `provider_id` | Услуги конкретного провайдера |
+Помимо автоматических индексов на PK и UNIQUE, добавил несколько индексов под частые запросы:
+
+| Индекс | Колонки | Зачем нужен |
+|--------|---------|-------------|
+| `users_login_key` (UNIQUE, авто) | `login` | Поиск при логине |
+| `idx_users_name` | `lower(first_name), lower(last_name)` | Поиск пользователей по имени (case-insensitive) |
+| `idx_services_provider_id` | `provider_id` | Все услуги конкретного провайдера |
 | `idx_orders_client_id` | `client_id` | Все заказы клиента |
-| `idx_orders_status` | `status` | Фильтрация по статусу |
-| `idx_orders_client_status` | `client_id, status` | Частый комбинированный запрос |
-| `idx_order_services_service_id` | `service_id` | Обратная навигация по услуге |
+| `idx_orders_status` | `status` | Фильтрация заказов по статусу |
+| `idx_orders_client_status` | `client_id, status` | Частый составной запрос — «заказы клиента X со статусом Y» |
+| `idx_order_services_service_id` | `service_id` | Обратная навигация — найти все заказы, где есть конкретная услуга |
+
+Подробный анализ с EXPLAIN — в [optimization.md](optimization.md).
 
 ---
 
@@ -125,13 +131,15 @@ order_services  (M:N)
 docker compose up --build
 ```
 
-При первом старте PostgreSQL автоматически применяет `schema.sql` и `data.sql` через `/docker-entrypoint-initdb.d/`.
+PostgreSQL при первом старте сам применяет `schema.sql` и `data.sql` через `/docker-entrypoint-initdb.d/`.
 
-Доступно после запуска:
+После запуска:
 - Swagger UI: http://localhost:8081/swagger
-- nginx (все сервисы): http://localhost:8080
+- Все сервисы через nginx: http://localhost:8080
 
 ### Пересоздать схему и данные
+
+Если нужно начать с чистого листа:
 
 ```bash
 docker compose exec postgres psql -U profi -d profidb \
@@ -139,19 +147,19 @@ docker compose exec postgres psql -U profi -d profidb \
   -f /docker-entrypoint-initdb.d/02_data.sql
 ```
 
-### Подключиться к базе напрямую
+### Подключиться к базе
 
 ```bash
 docker compose exec postgres psql -U profi -d profidb
 ```
 
-### Локальная сборка
+### Локальная сборка (без Docker)
 
 ```bash
-# Запустить только postgres
+# Сначала поднять postgres
 docker compose up -d postgres
 
-# Собрать
+# Собрать сервисы
 cmake -B build -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
       -DFETCHCONTENT_UPDATES_DISCONNECTED=ON \
@@ -160,7 +168,7 @@ cmake -B build -G Ninja \
       -DPostgreSQLInternal_ROOT=/usr/lib/postgresql/14
 cmake --build build --target user_service catalog_service order_service
 
-# Запустить каждый сервис (в отдельных терминалах)
+# Запустить каждый в отдельном терминале
 ./build/user_service    --config configs/user-service/static_config.yaml    --config_vars configs/config_vars.yaml
 ./build/catalog_service --config configs/catalog-service/static_config.yaml --config_vars configs/config_vars.yaml
 ./build/order_service   --config configs/order-service/static_config.yaml   --config_vars configs/config_vars.yaml

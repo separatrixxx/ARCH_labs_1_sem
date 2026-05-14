@@ -45,6 +45,8 @@
 
 ## Архитектура
 
+Три микросервиса на C++ (Yandex Userver), nginx раскидывает запросы по ним. Хранилище in-memory, JWT для аутентификации.
+
 ```
 nginx:8080  ──┬──▶  user-service:8081    /api/v1/auth, /api/v1/users, /api/v1/notifications
               ├──▶  catalog-service:8082  /api/v1/services
@@ -57,11 +59,9 @@ nginx:8080  ──┬──▶  user-service:8081    /api/v1/auth, /api/v1/users
 
 ```bash
 docker compose up --build
-# или
-podman compose up --build
 ```
 
-Swagger UI: http://localhost:8081/swagger
+Swagger UI будет на http://localhost:8081/swagger
 
 ### Локально
 
@@ -72,21 +72,24 @@ cmake --build build --target user_service catalog_service order_service
 bash start.sh
 ```
 
-**Важно:** `apply_patches.sh` нужно запускать после каждого вызова `cmake -B build ...`, так как cmake пересоздаёт `build/_deps/` и стирает патчи
+`apply_patches.sh` нужно запускать после каждого `cmake -B build ...` — cmake пересоздаёт `build/_deps/` и затирает патчи.
 
-- **Swagger UI: http://localhost:8080/swagger**
-- user-service напрямую: http://localhost:8081
-- catalog-service напрямую: http://localhost:8082
-- order-service напрямую: http://localhost:8083
+После запуска:
+- Swagger UI: http://localhost:8080/swagger
+- user-service: http://localhost:8081
+- catalog-service: http://localhost:8082
+- order-service: http://localhost:8083
 
 ## Тесты
 
 ```bash
-# Функциональные тесты
 pip install pytest pytest-asyncio aiohttp
 pytest tests/ -v
+```
 
-# Unit-тесты
+Unit-тесты:
+
+```bash
 cmake --build build --target profi_services_unittest
 ./build/profi_services_unittest
 ```

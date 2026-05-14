@@ -77,6 +77,8 @@
 
 ### Архитектура
 
+К lab4 добавился Redis — он работает как общий кеш и rate-limiter для всех трёх сервисов:
+
 ```
                     ┌──────────┐
                     │  nginx   │ :8080
@@ -97,14 +99,17 @@
              └───────────────┘
 ```
 
-**Новое в lab5** по сравнению с lab4:
-- **Redis 7** — добавлен как единый кеш- и rate-limit-слой для всех сервисов
-- **Кеширование (Cache-Aside)** — для 3 эндпоинтов через Redis
-- **Rate limiting (Fixed Window Counter)** — для auth-эндпоинтов через Redis
+### Что нового по сравнению с lab4
 
-### Реализованное кеширование
+- **Redis 7** — единый кеш и rate-limit слой
+- **Кеширование (Cache-Aside)** — для трёх GET-эндпоинтов
+- **Rate limiting (Fixed Window Counter)** — для login и register
 
-Стратегия: **Cache-Aside (Lazy Loading)**
+Подробное обоснование выбора стратегий — в `performance_design.md`.
+
+### Кеширование
+
+Стратегия Cache-Aside: сначала смотрим в Redis, если нет — идём в БД и сохраняем результат в кеш.
 
 | Endpoint | Ключ Redis | TTL | Инвалидация |
 |----------|-----------|-----|-------------|
@@ -112,22 +117,20 @@
 | `GET /api/v1/services/{id}` | `service:{id}` | 120 с | По TTL |
 | `GET /api/v1/users?login=...` | `user:login:{login}` | 30 с | По TTL |
 
-Каждый кешированный ответ содержит заголовок `X-Cache: HIT` или `X-Cache: MISS`.
+В ответе есть заголовок `X-Cache: HIT` или `X-Cache: MISS` — по нему видно, откуда пришли данные.
 
-При недоступности Redis запросы проходят напрямую к БД (fail-open).
+Если Redis упал — запросы идут напрямую к БД, сервис не ломается (fail-open).
 
-### Реализованный rate limiting
+### Rate limiting
 
-Алгоритм: **Fixed Window Counter** — атомарный `INCR` + `EXPIRE` в Redis.
+Fixed Window Counter через атомарный INCR в Redis.
 
 | Endpoint | Лимит | Окно |
 |----------|-------|------|
 | `POST /api/v1/auth/login` | 10 запросов | 60 сек |
 | `POST /api/v1/auth/register` | 5 запросов | 60 сек |
 
-Ответ при превышении лимита: **HTTP 429 Too Many Requests**.
-
-Заголовки в каждом ответе:
+При превышении — HTTP 429. В каждом ответе заголовки:
 ```
 X-RateLimit-Limit: 10
 X-RateLimit-Remaining: 7
@@ -138,40 +141,40 @@ X-RateLimit-Reset: 45
 
 ```
 lab5/
-├── README.md                    # этот файл
-├── performance_design.md        # проектирование стратегий
-├── docker-compose.yaml          # оркестрация (PG + Mongo + Redis + сервисы)
-├── Dockerfile                   # сборка C++ сервисов (с hiredis)
-├── Dockerfile.postgres          # PostgreSQL с инициализацией
-├── Dockerfile.nginx             # nginx reverse proxy
-├── CMakeLists.txt               # сборка с USE_CACHE=ON + hiredis
-├── schema.sql                   # DDL PostgreSQL
-├── data.sql                     # тестовые данные PostgreSQL
-├── data.js                      # тестовые данные MongoDB
+├── README.md
+├── performance_design.md
+├── docker-compose.yaml
+├── Dockerfile
+├── Dockerfile.postgres
+├── Dockerfile.nginx
+├── CMakeLists.txt
+├── schema.sql
+├── data.sql
+├── data.js
 ├── configs/
-│   ├── config_vars.yaml         # переменные окружения (+ redis_host/port)
+│   ├── config_vars.yaml
 │   ├── nginx/nginx.conf
 │   ├── user-service/static_config.yaml
 │   ├── catalog-service/static_config.yaml
 │   └── order-service/static_config.yaml
 └── src/
     ├── shared/
-    │   ├── redis_cache.hpp      # RedisCache userver-компонент (заголовок)
-    │   └── redis_cache.cpp      # реализация: Get/Set/Del + CheckRateLimit
+    │   ├── redis_cache.hpp      # RedisCache компонент (заголовок)
+    │   └── redis_cache.cpp      # Get/Set/Del + CheckRateLimit
     ├── user-service/
-    │   ├── main.cpp             # + регистрация RedisCache
+    │   ├── main.cpp
     │   └── handlers/
-    │       ├── auth_handler.hpp  # + redis_ member для rate limiting
-    │       ├── auth_handler.cpp  # + rate limiting (login: 10/мин, register: 5/мин)
-    │       ├── users_handler.hpp # + redis_ member для кеширования
-    │       └── users_handler.cpp # + кеш user:login:{login} (TTL 30с)
+    │       ├── auth_handler.hpp
+    │       ├── auth_handler.cpp  # rate limiting для login/register
+    │       ├── users_handler.hpp
+    │       └── users_handler.cpp # кеш user:login:{login}
     ├── catalog-service/
-    │   ├── main.cpp             # + регистрация RedisCache
+    │   ├── main.cpp
     │   └── handlers/
-    │       ├── services_handler.hpp # + redis_ member
-    │       └── services_handler.cpp # + кеш services:all (TTL 60с) + инвалидация
+    │       ├── services_handler.hpp
+    │       └── services_handler.cpp # кеш services:all + инвалидация
     └── order-service/
-        └── main.cpp             # + регистрация RedisCache
+        └── main.cpp
 ```
 
 ### Запуск
@@ -181,30 +184,30 @@ cd lab5
 docker-compose up --build
 ```
 
-Сервисы будут доступны:
-- API Gateway: http://localhost:8080
-- Swagger UI: http://localhost:8080/swagger
+После запуска:
+- API через nginx: http://localhost:8080
+- Swagger: http://localhost:8080/swagger
 - Redis CLI: `docker-compose exec redis redis-cli`
 
 ### Проверка кеширования
 
 ```bash
-# Первый запрос — cache MISS
+# Первый запрос — MISS, данные из БД
 curl -s -D- http://localhost:8080/api/v1/services | grep X-Cache
 # X-Cache: MISS
 
-# Повторный запрос — cache HIT
+# Второй запрос — HIT, данные из Redis
 curl -s -D- http://localhost:8080/api/v1/services | grep X-Cache
 # X-Cache: HIT
 
-# Проверка Redis
+# Заглянуть в Redis напрямую
 docker-compose exec redis redis-cli GET services:all
 ```
 
 ### Проверка rate limiting
 
 ```bash
-# Отправить 11 запросов на логин — 11-й получит 429
+# Шлём 11 запросов подряд — на 11-м получим 429
 for i in $(seq 1 11); do
   echo "Request $i:"
   curl -s -o /dev/null -w "%{http_code}" \
@@ -214,7 +217,7 @@ for i in $(seq 1 11); do
   echo
 done
 
-# Проверить заголовки
+# Посмотреть заголовки с лимитами
 curl -s -D- -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"login":"ivan.petrov","password":"password123"}' | grep X-RateLimit
@@ -222,9 +225,9 @@ curl -s -D- -X POST http://localhost:8080/api/v1/auth/login \
 
 ### Метрики
 
-| Метрика | Способ измерения |
-|---------|-----------------|
+| Метрика | Как посмотреть |
+|---------|---------------|
 | Cache hit rate | `redis-cli INFO stats` → `keyspace_hits / (hits + misses)` |
-| Cache memory | `redis-cli INFO memory` → `used_memory_human` |
-| Rate limit rejections | Подсчёт HTTP 429 в логах nginx |
-| Latency improvement | Сравнение `X-Cache: HIT` vs `MISS` response times |
+| Память Redis | `redis-cli INFO memory` → `used_memory_human` |
+| 429-е ответы | Считаем в логах nginx |
+| Разница в latency | Сравнить время ответа при HIT и MISS |

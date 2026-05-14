@@ -2,7 +2,7 @@
 
 ## Среда
 
-PostgreSQL 16, таблицы с тестовыми данными (12 пользователей, 12 услуг, 12 заказов, 16 строк order_services).
+PostgreSQL 16, тестовые данные: 12 пользователей, 12 услуг, 12 заказов, 16 строк в order_services. Понятно, что на таких объёмах разница не всегда видна, но EXPLAIN показывает, какой план выберет оптимизатор — и на больших данных это будет решающим.
 
 ---
 
@@ -16,31 +16,31 @@ FROM users
 WHERE login = $1;
 ```
 
-### EXPLAIN до оптимизации (без индекса)
+### EXPLAIN без индекса
 
 ```
 Seq Scan on users  (cost=0.00..1.12 rows=1 width=200)
   Filter: ((login)::text = 'ivan.petrov'::text)
 ```
 
-Используется последовательный скан. При росте до миллионов пользователей стоимость O(N).
+Последовательный скан — перебирает всю таблицу. На 12 строчках это ничего, а вот на миллионе пользователей будет O(N).
 
-### Оптимизация
+### Что сделано
 
-`login` объявлен `UNIQUE` — PostgreSQL автоматически создаёт B-tree индекс.
+`login` у нас UNIQUE, так что PostgreSQL автоматически создал B-tree индекс `users_login_key`. Ничего дополнительно делать не надо.
 
-### EXPLAIN после оптимизации
+### EXPLAIN с индексом
 
 ```
 Index Scan using users_login_key on users  (cost=0.15..2.17 rows=1 width=200)
   Index Cond: ((login)::text = 'ivan.petrov'::text)
 ```
 
-**Результат:** стоимость O(log N), операция поиска по индексу вместо полного скана.
+Теперь O(log N) — Index Scan вместо Seq Scan.
 
 ---
 
-## 2. Получение всех заказов клиента (`GET /orders`)
+## 2. Получение заказов клиента (`GET /orders`)
 
 ### Запрос
 
@@ -54,7 +54,9 @@ WHERE o.client_id = $1
 GROUP BY o.id;
 ```
 
-### EXPLAIN до оптимизации (без индекса на `orders.client_id`)
+Тут посложнее — JOIN + GROUP BY + агрегация.
+
+### EXPLAIN без индекса на client_id
 
 ```
 Hash Join  (cost=15.00..35.50 rows=3 width=80)
@@ -65,16 +67,16 @@ Hash Join  (cost=15.00..35.50 rows=3 width=80)
               Filter: (client_id = 2)
 ```
 
-Два последовательных скана + Hash Join.
+Два Seq Scan подряд + Hash Join.
 
-### Оптимизация
+### Что сделано
 
 ```sql
 CREATE INDEX idx_orders_client_id ON orders (client_id);
 CREATE INDEX idx_order_services_service_id ON order_services (service_id);
 ```
 
-### EXPLAIN после оптимизации
+### EXPLAIN после
 
 ```
 Hash Join  (cost=4.27..8.52 rows=3 width=80)
@@ -86,11 +88,11 @@ Hash Join  (cost=4.27..8.52 rows=3 width=80)
               Index Cond: (client_id = 2)
 ```
 
-**Результат:** `orders` читается через Index Scan, что устраняет Seq Scan на большом объёме данных.
+`orders` теперь читается через индекс. `order_services` всё ещё Seq Scan, но это потому что таблица маленькая — PostgreSQL решает, что проще прочитать всю, чем ходить по индексу. На большом объёме он переключится на Index Scan.
 
 ---
 
-## 3. Поиск пользователей по маске имени (`GET /users?first_name=...`)
+## 3. Поиск по имени (`GET /users?first_name=...`)
 
 ### Запрос
 
@@ -101,24 +103,22 @@ WHERE lower(first_name) LIKE lower($1)
   AND lower(last_name)  LIKE lower($2);
 ```
 
-### EXPLAIN до оптимизации
+### EXPLAIN без индекса
 
 ```
 Seq Scan on users  (cost=0.00..1.27 rows=1 width=168)
   Filter: ((lower(first_name) ~~ 'ива%') AND (lower(last_name) ~~ '%'))
 ```
 
-### Оптимизация
+### Что сделано
 
-Создан функциональный индекс на `lower(first_name), lower(last_name)`:
+Функциональный индекс — именно на lower(), потому что в WHERE мы сравниваем lower-версии:
 
 ```sql
 CREATE INDEX idx_users_name ON users (lower(first_name), lower(last_name));
 ```
 
-### EXPLAIN после оптимизации
-
-При поиске с префиксом (шаблон `'prefix%'`) PostgreSQL использует функциональный индекс:
+### EXPLAIN после
 
 ```
 Index Scan using idx_users_name on users  (cost=0.14..2.16 rows=1 width=168)
@@ -126,11 +126,11 @@ Index Scan using idx_users_name on users  (cost=0.14..2.16 rows=1 width=168)
   Filter: (lower(last_name) ~~ '%')
 ```
 
-**Результат:** префиксный поиск по имени использует B-tree индекс. Wildcard-поиск вида `%substring%` всегда будет Seq Scan — для него нужен GIN + `pg_trgm`.
+Работает для префиксного поиска (`'ива%'`). Но если искать подстроку типа `'%ван%'`, B-tree не поможет — для этого нужен GIN-индекс с расширением `pg_trgm`. Пока обойдёмся без него.
 
 ---
 
-## 4. Список услуг конкретного провайдера
+## 4. Услуги провайдера
 
 ### Запрос
 
@@ -140,31 +140,31 @@ FROM services
 WHERE provider_id = $1;
 ```
 
-### EXPLAIN до оптимизации (без индекса)
+### EXPLAIN без индекса
 
 ```
 Seq Scan on services  (cost=0.00..1.15 rows=4 width=200)
   Filter: (provider_id = 1)
 ```
 
-### Оптимизация
+### Что сделано
 
 ```sql
 CREATE INDEX idx_services_provider_id ON services (provider_id);
 ```
 
-### EXPLAIN после оптимизации
+### EXPLAIN после
 
 ```
 Index Scan using idx_services_provider_id on services  (cost=0.14..2.45 rows=4 width=200)
   Index Cond: (provider_id = 1)
 ```
 
-**Результат:** Index Scan вместо Seq Scan, особенно ощутимо при тысячах услуг.
+Стандартная ситуация — FK-колонка без автоматического индекса (PostgreSQL не создаёт индексы на FK, в отличие от PK). Добавили руками.
 
 ---
 
-## 5. Аналитика: топ заказываемых услуг
+## 5. Топ заказываемых услуг (аналитический запрос)
 
 ### Запрос
 
@@ -190,13 +190,13 @@ Limit  (cost=15.00..15.01 rows=5 width=24)
                     ->  Seq Scan on services s  (cost=0.00..1.12 rows=12 width=16)
 ```
 
-Для агрегации по всей таблице Seq Scan оптимален на малых данных. При миллионах строк помогает индекс `idx_order_services_service_id` и партиционирование `order_services` по дате.
+Тут агрегация по всей таблице, и Seq Scan — это нормально: PostgreSQL в любом случае должен прочитать все строки, чтобы посчитать COUNT. На малых данных это оптимально. При росте до миллионов строк поможет индекс `idx_order_services_service_id` (для JOIN) и, возможно, партиционирование order_services.
 
 ---
 
-## 6. Итоговая таблица индексов
+## 6. Все индексы
 
-| Индекс | Запрос, который оптимизирует | Тип |
+| Индекс | Какой запрос ускоряет | Тип |
 |--------|------------------------------|-----|
 | `users_login_key` (UNIQUE) | `WHERE login = $1` | B-tree (авто) |
 | `users_pkey` (PK) | `WHERE id = $1` | B-tree (авто) |
@@ -212,9 +212,9 @@ Limit  (cost=15.00..15.01 rows=5 width=24)
 
 ---
 
-## 7. Стратегия партиционирования (опционально)
+## 7. Партиционирование (опционально)
 
-Таблица `orders` при высокой нагрузке (миллионы заказов) хорошо поддаётся **партиционированию по времени** (`created_at`):
+Если заказов станет много (миллионы), таблицу `orders` можно разбить по дате создания:
 
 ```sql
 CREATE TABLE orders (
@@ -229,9 +229,9 @@ CREATE TABLE orders_2025 PARTITION OF orders
     FOR VALUES FROM ('2025-01-01') TO ('2026-01-01');
 ```
 
-**Преимущества:**
-- Запросы за конкретный период читают только нужную секцию
-- Старые данные легко архивировать (detach partition)
-- `VACUUM`/`ANALYZE` работают быстрее на меньших таблицах
+Что это даёт:
+- Запросы за конкретный период читают только нужную партицию, а не всю таблицу
+- Старые данные легко архивировать — просто отцепляем партицию (DETACH PARTITION)
+- VACUUM и ANALYZE работают быстрее на маленьких партициях
 
-Аналогично `order_services` можно партиционировать по `order_id` с хэш-партиционированием при равномерной нагрузке.
+`order_services` тоже можно партиционировать — по `order_id` с хэш-разбиением, если нагрузка будет равномерной.

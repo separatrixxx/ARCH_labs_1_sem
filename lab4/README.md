@@ -64,8 +64,9 @@
 
 ---
 
-Продолжение [lab2](../lab2) — маркетплейс профессиональных услуг «Profi».
-Гибридное хранилище: пользовательские данные и заказы остаются в **PostgreSQL** (как в lab3), каталог услуг перенесён в **MongoDB**.
+Это продолжение [lab2](../lab2) — маркетплейс «Profi».
+
+Основная идея lab4: перевести каталог услуг на MongoDB, оставив пользователей и заказы в PostgreSQL. Получается гибридное хранилище — реляционка для структурированных данных со связями, документная БД для каталога с гибкой схемой.
 
 ## Архитектура
 
@@ -75,8 +76,7 @@ nginx:8080  ──┬──▶  user-service:8081    /api/v1/auth, /api/v1/users
               └──▶  order-service:8083    /api/v1/orders                 ──▶  postgres:5432
 ```
 
-- **user-service** и **order-service** работают с PostgreSQL (пользовательские данные, заказы, связи M:N)
-- **catalog-service** работает с MongoDB (каталог услуг — гибкая документная модель)
+user-service и order-service по-прежнему работают с PostgreSQL, а catalog-service теперь ходит в MongoDB. Почему именно каталог вынесен в Mongo — описано в [schema_design.md](schema_design.md), если коротко: у услуг гибкая структура, которую удобнее хранить в документах.
 
 ## Модель данных
 
@@ -94,25 +94,26 @@ nginx:8080  ──┬──▶  user-service:8081    /api/v1/auth, /api/v1/users
 |-----------|--------------|--------------|
 | `services` | `_id`, `title`, `description`, `price`, `provider_id`, `created_at` | ObjectId, String, Double, Date |
 
-`provider_id` — строка с PostgreSQL `users.id`. `order_services.service_id` — строка с MongoDB `services._id`.
+`provider_id` — строковое представление PostgreSQL `users.id`. А `order_services.service_id` — строка с MongoDB ObjectId. Такая cross-database связь, целостность на уровне приложения.
 
-Дизайн и обоснование — в [schema_design.md](schema_design.md).
+Подробнее про дизайн и обоснование — в [schema_design.md](schema_design.md).
 
 ## Запуск
 
-### Docker Compose (рекомендуется)
+### Docker Compose
 
 ```bash
 cd lab4
 docker compose up --build
 ```
 
-После запуска:
-- PostgreSQL автоматически применяет `schema.sql` и `data.sql`
+PostgreSQL сам подтянет `schema.sql` и `data.sql` при первом запуске. После этого:
 - Swagger UI: http://localhost:8081/swagger
-- nginx (все сервисы): http://localhost:8080
+- Все сервисы через nginx: http://localhost:8080
 
-### Загрузить тестовые данные MongoDB
+### Загрузить тестовые данные в MongoDB
+
+MongoDB данные нужно залить руками, потому что там нет init-скриптов как в PostgreSQL:
 
 ```bash
 docker compose exec mongo mongosh \
